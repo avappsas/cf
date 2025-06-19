@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  app_perito_web:
+    image: app_perito_web:1.0
+    build: .
+    container_name: app_perito_web
+    ports:
+      - "8000:80"
+    environment:
+      - DB_CONNECTION=pgsql
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_DATABASE=app_perito_web
+      - DB_USERNAME=laravel
+      - DB_PASSWORD=secret
+    depends_on:
+      - db
+    volumes:
+      - .:/var/www/html/app_perito_web
+
+  db:
+    image: postgres:13
+    container_name: app_perito_web_db
+    environment:
+      - POSTGRES_DB=app_perito_web
+      - POSTGRES_USER=laravel
+      - POSTGRES_PASSWORD=secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./cornisk.sql:/docker-entrypoint-initdb.d/cornisk.sql  # Copia el script SQL al contenedor
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
