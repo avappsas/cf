@@ -12,9 +12,13 @@ class VerifyCsrfToken extends Middleware
      * @var array
      */
     protected $except = [
-        'apiDetalleCaso',
-        'apiRecibir'
+        'whatsapp',
+        'whatsapp/webhook',
+        'whatsa',
+        'contactChats',
+        'listenBingo',
+        'getMessages',
+        'sendMessages',
+        'sendWS'
     ];
-
-    
 }

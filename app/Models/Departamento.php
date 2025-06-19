@@ -15,8 +15,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Departamento extends Model
 {
-        // Desactivar los timestamps
-        public $timestamps = false;
+    
     static $rules = [
     ];
 

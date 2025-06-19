@@ -45,14 +45,8 @@ class User extends Authenticatable
      *
      * @var array
      */
-    protected $fillable = [
-        'name',
-        'email',
-        'password',
-        'usuario',
-        'telefonos',
-        'id_provincia', // Asegúrate de incluir este campo
-    ];
+    protected $fillable = ['name','email','usuario','activacion','perfil','foto','password','credito'];
+
     /**
      * The attributes that should be hidden for arrays.
      *
@@ -85,6 +79,18 @@ class User extends Authenticatable
     /**
      * @return \Illuminate\Database\Eloquent\Relations\HasOne
      */
- 
+    public function user()
+    {
+        return $this->hasOne('App\Models\User', 'PK_users', 'usuario');
+    }
+    
+    /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne
+     */
+    public function users()
+    {
+        return $this->hasOne('App\Models\User', 'PK_users', 'usuario');
+    }
+    
 
 }

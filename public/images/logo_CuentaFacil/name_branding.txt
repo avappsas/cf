@@ -1,0 +1,6 @@
+
+            Main text Font: Mallanna
+            Slogan Text Font: Cormorant Unicase
+            COLOR RGBA: rgba(86, 140, 29, 1)
+            COLOR HEX: #568c1d
+            

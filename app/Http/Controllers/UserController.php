@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Lidere;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
-use Illuminate\Support\Facades\Hash;
 
 /**
  * Class UserController
@@ -23,8 +24,8 @@ class UserController extends Controller
     public function index()
     {
         $users = User::where('activacion', 1)->orderBy('name', 'asc')->simplePaginate(100);
-        $provincias = DB::table('Provincias')->pluck('Provincia', 'Id');
-        return view('usuarios.index', compact('users','provincias'))
+
+        return view('user.index', compact('users'))
             ->with('i', (request()->input('page', 1) - 1) * $users->perPage());
     }
 
@@ -36,8 +37,7 @@ class UserController extends Controller
     public function create()
     {
         $user = new User();
-        $provincias = DB::table('Provincias')->pluck('Provincia', 'Id');
-        return view('usuarios.create', compact('user', 'provincias'));
+        return view('user.create', compact('user'));
     }
 
     /**
@@ -48,37 +48,39 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255',
-            'password' => 'required|string|min:6',
-            'usuario' => ['required', 'string', 'max:255', 'unique:users'], // Nueva validación para el campo 'usuario'
-            'id_provincia' => 'required|exists:Provincias,Id',
-        ]);
+        request()->validate(User::$rules);
 
-        $user = new User();
-        $user->name = $request->name;
-        $user->email = $request->email;
-        $user->telefonos = $request->telefonos;
-        $user->usuario = $request->usuario;
-        $user->id_provincia = $request->id_provincia;
-        $user->password = Hash::make($request->password);
-        $user->save();
+        $user = User::create($request->all());
 
-        return redirect()->route('usuarios.index')
-            ->with('success', 'Usuario creado correctamente.');
+        return redirect()->route('users.index')
+            ->with('success', 'User created successfully.');
     }
 
+    public function ActualizarFoto(Request $request)
+    {
+        $idUsuario = auth()->user()->usuario;
+        print_r($request->archivo);die();
+        $path = $request->file('archivo')->store(
+            'fotoPerfil', 'public'
+        );
+        print_r($path);die();
+        $Lidere = DB::update('update Lideres set foto = ? where cedula = ?', [$path,$idUsuario]);
+        return $path;
+    }
     /**
      * Display the specified resource.
      *
      * @param  int $id
      * @return \Illuminate\Http\Response
      */
-    public function show($id)
+    public function CrearUsuario(Request $request)
     {
-        $user = User::findOrFail($id);
-        return view('usuarios.show', compact('user'));
+        $id = $request->id;
+        //print_r($request->id);die();
+        $data = DB::update("EXEC [crearUsuario] @CEDULA = N'$id';");
+
+        return redirect()->route('usuarios.index')
+            ->with('success', 'Usuario creado exitosamente.');
     }
 
     /**
@@ -87,95 +89,88 @@ class UserController extends Controller
      * @param  int $id
      * @return \Illuminate\Http\Response
      */
-
     public function edit($id)
     {
-        $user = User::findOrFail($id);
-        $provincias = DB::table('Provincias')->pluck('Provincia', 'Id');
-        // print_r($user);die();
-        return view('usuarios.edit', compact('user', 'provincias'));
+        $user = User::find($id);
+        $cedula = $user->usuario;  
+        $consulta = DB::select("SELECT foto FROM [Lideres] where Cedula in ($cedula);"); 
+        if (empty($consulta)){
+            $foto = 'fotoPerfil/perfilDefault.png';
+        }else{
+            $foto = $consulta[0]->foto;
+        };
+        //print_r($consulta);die();
+        //print_r($foto);die();
+
+        return view('user.edit', compact('user','foto'));
     }
 
     /**
      * Update the specified resource in storage.
      *
      * @param  \Illuminate\Http\Request $request
-     * @param  int $id
+     * @param  Users $user
      * @return \Illuminate\Http\Response
      */
-    
-    public function update(Request $request, $id)
+    public function update(Request $request, User $user)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255',
-            'password' => 'nullable|string|min:6',
-            'id_provincia' => 'required|exists:Provincias,Id',
-        ]);
-
-        $user = User::findOrFail($id);
-        $user->name = $request->name;
-        $user->email = $request->email;
-        $user->telefonos = $request->telefonos;
-        $user->id_provincia = $request->id_provincia;
-
-        if ($request->filled('password')) {
-            $user->password = Hash::make($request->password);
+        if (empty($request->file('archivo'))){
+            $idUsuario = auth()->user()->usuario;
+        }else{
+            
+            $idUsuario = auth()->user()->usuario;
+            $path = $request->file('archivo')->store(
+                'fotoPerfil', 'public'
+            );
+            $Lidere = DB::update('update Lideres set foto = ? where cedula = ?', [$path,$idUsuario]);
         }
-
-        $user->save();
-
-        return redirect()->route('casos.index')
-            ->with('success', 'Usuario actualizado correctamente.');
+        //print_r($path);die();
+        request()->validate(User::$rules);
+        $id = $request->usuario;
+        $password = $request->password;
+        if ($password == '') {
+            $password =auth()->user()->password;  
+        }else{
+            $password = bcrypt($request->password);
+        }
+        $user = User::where('usuario', $id)->update(array('name' => $request->name,'email' => $request->email,'password' => $password));
+        
+        //return redirect($url);
+        return redirect()->route('home')
+            ->with('success', 'Datos actualizados correctamente');
     }
 
     /**
-     * Remove the specified resource from storage.
-     *
-     * @param  int $id
+     * @param int $id
      * @return \Illuminate\Http\RedirectResponse
+     * @throws \Exception
      */
     public function destroy($id)
     {
-        $user = User::findOrFail($id);
-        $user->delete();
+        //$user = User::find($id)->delete();
+        $user = User::where('usuario', $id)->update(array('activacion' => 2,'password' => bcrypt($id)));
 
-        return redirect()->route('usuarios.index')
-            ->with('success', 'Usuario eliminado correctamente.');
+        return redirect()->back()
+            ->with('Completo', 'El usuario fue activado correctamente!');
     }
 
     /**
-     * Perform logout and clear session.
-     *
+     * @param int $id
      * @return \Illuminate\Http\RedirectResponse
+     * @throws \Exception
      */
     public function perform()
     {
         Session::flush();
+        
         Auth::logout();
 
         return redirect('login');
     }
 
-
-
-
-    public function login(Request $request)
-    {
-        $correo = $request->correo;
-        $password = $request->password;
-        // print_r($correo);die();
-        
-        $data = DB::select("SELECT TOP 1 * from users where email = '$correo';");
-        // print_r($data);die();
-
-        $hashedPassword = $data[0]->password; 
-
-        if (Hash::check($password, $hashedPassword)) {
-            return json_encode($data);
-        } else {
-            
-            return json_encode('Credenciales incorrecta');
-        }
+    public function cerrarSeccion(){
+        Auth::logout();
+        return redirect('home');
     }
+
 }

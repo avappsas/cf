@@ -1,26 +1,10 @@
 <?php
 
- 
+use App\Events\chatWhatsAppEvent;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use PhpParser\Node\Expr\PostDec;
 use App\Http\Controllers\WebhookController;
-use App\Http\Controllers\BieneController;
-use App\Http\Controllers\ValoracioneController;
-use App\Http\Controllers\ImageController;
-use App\Http\Controllers\AseguradoraController;
-use App\Http\Controllers\BienesController;
-use App\Http\Controllers\TipoBieneController;
-use App\Http\Controllers\BrokerController;
-use App\Http\Controllers\CasosController;
-use App\Http\Controllers\CausaController; 
-use App\Http\Controllers\ProvinciaController;
-use App\Http\Controllers\SeguroController;
-use App\Http\Controllers\RamoController;
-use App\Http\Controllers\ObjetoController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\ValoracionesController;
-use App\Http\Controllers\CaracteristicasBienController;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,62 +16,67 @@ use App\Http\Controllers\CaracteristicasBienController;
 | contains the "web" middleware group. Now create something great!
 |
 */
-Route::redirect('/', '/home');
 
-Route::get('http://localhost/', function () {
-    return view('http://localhost/casos');
+Route::get('http://avapp.digital:88/cf/public/', function () {
+    return view('http://avapp.digital:88/cf/public/home');
 });
 
 Auth::routes();
+
 
 Route::resource('usuarios', App\Http\Controllers\UserController::class)->middleware('auth');
 
 route::post('update', [App\Http\Controllers\UserController::class, 'update'])->name('update');
 
-Route::get('/home', [App\Http\Controllers\CasoController::class, 'index'])->name('home')->middleware('auth');
+Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home')->middleware('auth');
 
 Route::POST('cerrarSeccion', [App\Http\Controllers\UserController::class, 'cerrarSeccion'])->name('cerrarSeccion')->middleware('auth');
 
-Route::resource('casos', App\Http\Controllers\CasoController::class)->middleware('auth');
+ Route::resource('contratos', App\Http\Controllers\ContratoController::class)->middleware('auth');
+
+ Route::get('generarDocumentosPDF', [App\Http\Controllers\ContratoController::class, 'generarDocumentosPDF'])->name('generarDocumentosPDF')->middleware('auth');
+
+ Route::get('gpdf', [App\Http\Controllers\ContratoController::class, 'gpdf'])->name('gpdf')->middleware('auth');
+
+ Route::get('cargueDoc', [App\Http\Controllers\ContratoController::class, 'cargueDoc'])->name('cargueDoc')->middleware('auth');
  
-Route::resource('tipo_bienes', App\Http\Controllers\TipoBieneController::class)->middleware('auth');  
+ Route::post('registroCuota', [App\Http\Controllers\ContratoController::class, 'registroCuota'])->name('registroCuota')->middleware('auth');
+
+ Route::get('tablaCuotas', [App\Http\Controllers\ContratoController::class, 'tablaCuotas'])->name('tablaCuotas')->middleware('auth');
+
+ Route::get('btnMostrarPDF', [App\Http\Controllers\ContratoController::class, 'btnMostrarPDF'])->name('btnMostrarPDF')->middleware('auth');
+
+ Route::post('uploadFile', [App\Http\Controllers\ContratoController::class, 'uploadFile'])->name('uploadFile')->middleware('auth');
+
+ Route::get('btnEnviarCuota', [App\Http\Controllers\ContratoController::class, 'btnEnviarCuota'])->name('btnEnviarCuota')->middleware('auth');
+
+ Route::get('bandeja', [App\Http\Controllers\CuotaController::class, 'bandeja'])->name('bandeja')->middleware('auth')->middleware('check.route.access');
+
+ Route::resource('cuotas', App\Http\Controllers\CuotaController::class)->middleware('auth');
+
+ Route::get('verDocJuridica', [App\Http\Controllers\CuotaController::class, 'verDocJuridica'])->name('verDocJuridica')->middleware('auth');
+
+ Route::get('cambioEstadoFile', [App\Http\Controllers\CuotaController::class, 'cambioEstadoFile'])->name('cambioEstadoFile')->middleware('auth');
+
+ Route::get('cambioEstadoCuenta', [App\Http\Controllers\CuotaController::class, 'cambioEstadoCuenta'])->name('cambioEstadoCuenta')->middleware('auth');
+
+ Route::get('nextCuenta', [App\Http\Controllers\ContratoController::class, 'nextCuenta'])->name('nextCuenta')->middleware('auth');
+
+ Route::get('enviarAdmin', [App\Http\Controllers\ContratoController::class, 'enviarAdmin'])->name('enviarAdmin')->middleware('auth');
+
+ Route::get('contratos_vigentes', [App\Http\Controllers\ContratoController::class, 'contratos_vigentes'])->name('contratos_vigentes')->middleware('auth')->middleware('check.route.access');
+
+ Route::resource('base-datos', App\Http\Controllers\BaseDatoController::class)->middleware('auth');
+
+ Route::get('misdatos', [App\Http\Controllers\BaseDatoController::class, 'misdatos'])->name('misdatos')->middleware('auth');
+
+ Route::get('readPdf', [App\Http\Controllers\ContratoController::class, 'readPdf'])->name('readPdf');
+
+ Route::get('generarZipSap', [App\Http\Controllers\ContratoController::class, 'generarZipSap'])->name('generarZipSap')->middleware('auth');
+
+ Route::get('validarDocumento', [App\Http\Controllers\ContratoController::class, 'validarDocumento'])->name('validarDocumento')->middleware('auth');
  
-Route::resource('bienes', App\Http\Controllers\BieneController::class)->middleware('auth');  
 
-Route::post('/bienes/{id_bien}/images', [BieneController::class, 'storeImages'])->name('images.store');
- 
-Route::post('bienes/{id_bien}/imagenes', [BieneController::class, 'storeImages'])->name('imagenes.store');
+ Route::get('notificacion', [App\Http\Controllers\ContratoController::class, 'notificacion'])->name('notificacion');
 
-Route::delete('imagenes/{id}', [BieneController::class, 'destroyImage'])->name('imagenes.destroy'); 
-
-Route::get('/configuracion', function () { return view('Configuracion');})->name('configuracion');
- 
-Route::resource('aseguradoras', AseguradoraController::class);
-
-Route::resource('brokers', BrokerController::class);  
-
-Route::resource('caracteristicas_bien', caracteristicasBienController::class);
-
-Route::resource('causas', CausaController::class);  
-
-Route::resource('provincias', ProvinciaController::class);
-
-Route::resource('seguros', SeguroController::class);
-
-Route::resource('ramos', RamoController::class);
-
-Route::resource('objetos', ObjetoController::class); 
-
-Route::post('/subir-pdf', [BieneController::class, 'subirPdf'])->name('subir-pdf');
-
-Route::post('/valoraciones', [ValoracioneController::class, 'store'])->name('valoraciones.store');
-
-Route::resource('valoraciones', ValoracioneController::class);
-  
-Route::get('/get-aseguradoras', [\App\Http\Controllers\CasoController::class, 'getAseguradoras'])->name('get.aseguradoras'); 
-
-Route::get('/get-objetos', [\App\Http\Controllers\BieneController::class, 'getObjeto'])->name('get.objeto'); 
-
-Route::get('/get-tipo-caracteristicas', [\App\Http\Controllers\BieneController::class, 'getCaracteristicas'])->name('get.tipo.caracteristicas')->middleware('auth');
-
-Route::get('bienes/get-caracteristicas', [BieneController::class, 'getCaracteristicas'])->name('bienes.getCaracteristicas');
+ Route::get('asignarUser', [App\Http\Controllers\ContratoController::class, 'asignarUser'])->name('asignarUser')->middleware('auth');
