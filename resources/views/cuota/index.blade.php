@@ -54,51 +54,55 @@
                                 <div class="table-responsive">
                                     <table class="table table-striped table-hover">
                                         <thead class="thead2">
-                                            <tr>
-                                                
-                                                <th>Nombre</th>
-                                                <th>Cuota</th>
-                                                <th>Fecha Acta</th>
-                                                <th>Oficina</th>
-                                                <th>Parcial</th>
-                                                <th> %</th>
-                                                <th>Estado</th>
-                                                @if ($perfil == 1)
-                                                    <th>Asignacion</th>
-                                                @endif
-
+                                            <tr> 
+                                                <th >Nombre</th>
+                                                <th class="text-center">Cuota</th>
+                                                <th class="text-center">Fecha Acta</th>
+                                                <th class="text-center">Parcial</th>
+                                                <th class="text-center">%</th>
+                                                <th class="text-center">Estado</th>
+                                                <th class="text-center">Asignado</th>
                                                 <th></th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             @foreach ($cuotas as $cuota)
-                                                @if (Auth::user()->id == $cuota->id_user || $perfil == 1 || $perfil == 4)
-                                                    <tr>
-                                                        
+                                                
+                                                    <tr> 
                                                         <td>{{ $cuota->Nombre }}</td>
-                                                        <td>Cuota {{ $cuota->Cuota }}</td>
-                                                        <td>{{ $cuota->Fecha_Acta }}</td>
-                                                        <td>{{ $cuota->Oficina }}</td>
-                                                        <td>{{ $cuota->Parcial }}</td>
-                                                        <td>{{ $cuota->Porcentaje }}%</td>
-                                                        <td>{{ $cuota->Estado_juridica }}</td>
-                                                        @if ($perfil == 1)
+                                                        <td class="text-center">Cuota {{ $cuota->Cuota }}</td>
+                                                        <td class="text-center">{{ \Carbon\Carbon::parse($cuota->Fecha_Acta)->format('d-M-y') }}</td>
+                                                        <td class="text-center">{{ $cuota->Parcial }}</td>
+                                                        <td class="text-center">{{ $cuota->Porcentaje }}%</td>
+                                                        <td class="text-center">{{ $cuota->Estado_juridica }}</td>
+                                                        
+                                                        @if ($perfil == 3 )
+                                                            <td class="text-center">
+                                                                <div class="input-group mb-3">
+                                                                    {{ Form::select('userAsignado', $listaAsignacionFormateada, $cuota->id_user, ['class' => 'form-control form-control-sm' . ($errors->has('userAsignado') ? ' is-invalid' : ''), 'placeholder' => 'Asignar','id' => 'asignacion_' .$cuota->Id, 'disabled' => 'disabled']) }}
+                                                                    <div class="input-group-append">
+                                                                    </div> 
+                                                                </div>
+                                                            </td>
+                                                        @endif
+                                                        @if ($perfil == 1 || $perfil == 7 )
                                                             <td>
                                                                 <div class="input-group mb-3">
-                                                                    {{ Form::select('userAsignado', $listaAsignacionFormateada, $cuota->id_user, ['class' => 'form-control form-control-sm' . ($errors->has('userAsignado') ? ' is-invalid' : ''), 'placeholder' => 'Asignar','id' => 'asignacion_' .$cuota->Id]) }}
+                                                                    {{ Form::select('userAsignado', $listaAsignacionFormateada, $cuota->id_user, ['class' => 'form-control form-control-sm' . ($errors->has('userAsignado') ? ' is-invalid' : ''), 'placeholder' => 'Sin Asignar','id' => 'asignacion_' .$cuota->Id]) }}
                                                                     <div class="input-group-append">
                                                                         <button class="btn btn-outline-success btn-sm" type="button" onclick="asignarUser({{$cuota->Id}})">Asignar</button>
                                                                     </div>
                                                                 </div>
                                                             </td>
                                                         @endif
-                                                        
+
                                                         <td>
-                                                                <a class="btn btn-sm btn-info" onclick="btnAbrirModalVerDocCuotas({{$cuota->Contrato}},{{$cuota->Id}},'{{$cuota->Nombre}}')"><i class="fa-solid fa-envelope-open-text"></i> Abrir</a>
-                                                                @csrf
+                                                            <a class="btn btn-sm btn-info" onclick="btnAbrirModalVerDocCuotas({{$cuota->Contrato}},{{$cuota->Id}},'{{$cuota->Nombre}}')"><i class="fa-solid fa-envelope-open-text"></i> Abrir</a>
+ 
                                                         </td>
+                                                        @csrf
                                                     </tr>
-                                                @endif
+                                              
                                             @endforeach
                                         </tbody>
                                     </table>
@@ -114,15 +118,12 @@
                                                 
                                                 <th>Nombre</th>
                                                 <th>Cuota</th>
-                                                <th>Fecha Acta</th>
-                                                {{-- <th>Mes Cobro</th> --}}
-                                                <th>Oficina</th>
+                                                <th>Fecha Acta</th> 
                                                 <th>Parcial</th>
                                                 <th> %</th>
                                                 <th>Estado</th>
                                                 <th>Responsable</th>
-
-                                                {{-- <th></th> --}}
+                                                 {{-- <th></th> --}}
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -131,22 +132,14 @@
                                                     
                                                     <td>{{ $cuotaA->Nombre }}</td>
                                                     <td>Cuota {{ $cuotaA->Cuota }}</td>
-                                                    <td>{{ $cuotaA->Fecha_Acta }}</td>
-                                                    {{-- <td>{{ $cuotaA->Mes_cobro }}</td> --}}
-                                                    <td>{{ $cuotaA->Oficina }}</td>
+                                                    <td>{{ \Carbon\Carbon::parse($cuotaA->Fecha_Acta)->format('d-M-y') }}</td> 
                                                     <td>{{ $cuotaA->Parcial }}</td>
                                                     <td>{{ $cuotaA->Porcentaje }}%</td>
                                                     <td>{{ $cuotaA->Estado_juridica }}</td>
                                                     <td>{{ $cuotaA->nameUser }}</td>
-
-                                                    {{-- <td> --}}
-                                                        {{-- <form action="{{ route('cuotas.destroy',$cuotaA->Id) }}" method="POST"> --}}
-                                                            {{-- <a class="btn btn-sm btn-info" onclick="btnAbrirModalVerDocCuotas({{$cuotaA->Contrato}},{{$cuotaA->Id}},'{{$cuotaA->Nombre}}')"><i class="fa-solid fa-envelope-open-text"></i> Abrir</a> --}}
-                                                            {{-- <a class="btn btn-sm btn-success" href="{{ route('cuotas.edit',$cuota->Id) }}"><i class="fa-solid fa-file-circle-check"></i> Aprovar</a>
-                                                            <a class="btn btn-sm btn-danger " href="{{ route('cuotas.show',$cuota->Id) }}"><i class="fa-solid fa-file-circle-xmark"></i> Devolver</a> --}}
-                                                            @csrf
-                                                    {{-- </td> --}}
-                                                    
+ 
+                                             @csrf
+                                                     
                                                 </tr>
                                             @endforeach
                                         </tbody>
@@ -168,15 +161,12 @@
                                                 
                                                 <th>Nombre</th>
                                                 <th>Cuota</th>
-                                                <th>Fecha Acta</th>
-                                                {{-- <th>Mes Cobro</th> --}}
-                                                <th>Oficina</th>
+                                                <th>Fecha Acta</th>  
                                                 <th>Parcial</th>
                                                 <th> %</th>
                                                 <th>Estado</th>
                                                 <th>Responsable</th>
-
-                                                {{-- <th></th> --}}
+                                                <th>Acción</th> 
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -185,13 +175,12 @@
                                                     
                                                     <td>{{ $cuotaD->Nombre }}</td>
                                                     <td>Cuota {{ $cuotaD->Cuota }}</td>
-                                                    <td>{{ $cuotaD->Fecha_Acta }}</td>
-                                                    {{-- <td>{{ $cuotaD->Mes_cobro }}</td> --}}
-                                                    <td>{{ $cuotaD->Oficina }}</td>
+                                                    <td>{{ \Carbon\Carbon::parse($cuotaD->Fecha_Acta)->format('d-M-y') }}</td> 
                                                     <td>{{ $cuotaD->Parcial }}</td>
                                                     <td>{{ $cuotaD->Porcentaje }}%</td>
                                                     <td>{{ $cuotaD->Estado_juridica }}</td>
                                                     <td>{{ $cuotaD->nameUser }}</td>
+                                                    <td><a class="btn btn-sm btn-info" onclick="btnAbrirModalVerDocCuotas({{$cuotaD->Contrato}},{{$cuotaD->Id}},'{{$cuotaD->Nombre}}')"><i class="fa-solid fa-envelope-open-text"></i> Abrir</a></td>
 
                                                    @csrf
 
@@ -203,7 +192,7 @@
                             </div>
 
 
-                            
+                             {{--  //CONTABILIDAD --}} 
                             @if($perfil == 4)
                                 <div id="enviadas" class="tab-pane fade">
                                     <!-- Contenido para cuotas aprobadas -->
@@ -244,10 +233,10 @@
                                                                 @if ($cuotaE->id == $cuotasE20->FUID)
                                                                     <tr  onclick="event.stopPropagation();">
                                                                         <td colspan="3">{{ $cuotasE20->Nombre }}</td>
-                                                                        <td>{{ $cuotasE20->documento }}</td>
+                                                                        <td>{{ $cuotasE20->Documento }}</td>
                                                                         <td>{{ $cuotasE20->Cuota }}</td>
                                                                         <td>{{ $cuotasE20->Num_Contrato }}</td>
-                                                                        <td>{{ $cuotasE20->rpc }}</td>
+                                                                        <td>{{ $cuotasE20->RPC }}</td>
                                                                         <td>{{ $cuotasE20->consecutivo }}</td>
                                                                         {{-- <td colspan="3">{{ $cuotasE20->nameUser }}</td> --}}
                                                                         <td>
@@ -258,24 +247,17 @@
                                                                 @endforeach
                                                             </table>
                                                         </td>
-                                                        <td>{{ $cuotaE->created_at }}</td>
-                                                        {{-- <td>{{ $cuotaE->estado }}</td> --}}
-                                                        {{-- <td>{{ $cuotaA->nameUser }}</td> --}}
-                                                        <td>{{$cuotaE->nameUser}}</td>
-        
+                                                        <td>{{ $cuotaE->created_at }}</td> 
+                                                        <td>{{$cuotaE->nameUser}}</td> 
                                                         <td>
-                                                            {{-- <form action="{{ route('cuotas.destroy',$cuotaA->Id) }}" method="POST"> --}}
                                                                 <a class="btn btn-sm btn-success" onclick="contabilizar()"><i class="fa-regular fa-circle-check"></i> Aprobar Paquete</a>
-                                                                {{-- <a class="btn btn-sm btn-success" href="{{ route('cuotas.edit',$cuota->Id) }}"><i class="fa-solid fa-file-circle-check"></i> Aprovar</a>
-                                                                <a class="btn btn-sm btn-danger " href="{{ route('cuotas.show',$cuota->Id) }}"><i class="fa-solid fa-file-circle-xmark"></i> Devolver</a> --}}
                                                                 @csrf
                                                         </td>
                                                     </tr>
                                                 @endforeach
                                             </tbody>
                                         </table>
-                                        {{-- <a href="generarZip" class="btn btn-light btn-sm float-right"><i class="fa-solid fa-file-zipper"></i> Descargar Zip</a> --}}
-                                        {{-- <a onclick="enviarLote()" class="btn btn-light btn-sm float-right"><i class="fa-solid fa-file-zipper"></i> Descargar Zip</a> --}}
+
                                     </div>
                                 </div>
                             @endif
@@ -331,7 +313,7 @@
                                         </div>
                                     </div>
                                     <div class="col-md-6">
-                                        <embed id="pdfEmbed" src="http://avapp.digital/cf/public/storage/doc_cuenta/predeterminado.pdf" type="application/pdf" width="100%" height="100%">
+                                        <embed id="pdfEmbed" src="https://cuentafacil.co/storage/doc_cuenta/predeterminado.pdf" type="application/pdf" width="100%" height="100%">
                                     </div>
                                     
                                 </div>
@@ -340,13 +322,7 @@
                         </div>
                     </div>
                 </div>
-                
-                <div class="modal-footer">
-                    <div class="row">
-                        <a class="btn btn-md btn-danger" onclick="cambioEstadoCuenta(0)" style="margin-right: 3px"><i class="fa-solid fa-file-circle-xmark"></i> Devolver</a>
-                        <a class="btn btn-md btn-success" onclick="cambioEstadoCuenta(1)" style="margin-right: 3px"><i class="fa-solid fa-file-circle-check"></i> Aprobar</a>
-                    </div>
-                </div>
+  
             </div>
         </div>
     </div>

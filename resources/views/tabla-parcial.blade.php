@@ -11,8 +11,21 @@
     <tbody>
         @foreach($datos as $dato)
         <tr  class="tr-principal">
-            <td>Cuota {{ $dato->Cuota }}</td>
-            <td>{{ $dato->Estado }}</td>
+            <td style="color: black; font-weight: bold;">Cuota {{ $dato->Cuota }}</td>
+            <td>            
+            @if ($dato->Estado === 'CREADA')
+                <span style="color: black; font-weight: bold;">{{ $dato->Estado }}</span>
+            @elseif ($dato->Estado === 'APROBADA')
+                <span style="color: rgb(0, 10, 0); font-weight: bold;">{{ $dato->Estado }}</span>               
+            @elseif ($dato->Estado === 'PRE APROBADO')
+                <span style="color: green; font-weight: bold;">{{ $dato->Estado }}</span>
+            @elseif ($dato->Estado === 'ENVIADA')
+                <span style="color: green; font-weight: bold;">{{ $dato->Estado }}</span>
+            @elseif ($dato->Estado === 'DEVUELTA')
+                <span style="color: red; font-weight: bold;">{{ $dato->Estado }}</span>
+            @else
+                {{ $dato->Estado }}
+            @endif</td>
             <td>{{ $dato->updated_at }}</td>
             {{-- <td style="width: 30%">{{ $dato->Observacion }}</td> --}}
             <td >
@@ -40,6 +53,8 @@
                             <td>{{ $formato->Nombre}}</td>
                             <td>
                                 <a class="btn btn-sm btn-danger" onclick="traerPDF({{$dato->Id}},{{$formato->Id}},'{{$formato->Nombre}}')"><i class="fa-solid fa-file-pdf"></i> PDF</a>
+                                        <a class="btn btn-sm btn-primary" href="https://apicontrato.glitch.me/generarZip/{{$num_contrato}}/{{$formato->plantilla}}/{{$dato->Id}}" target="_blank"><i class="fa-solid fa-file-word"></i> Word</a>
+
                                 {{-- <a class="btn btn-sm btn-success" href="{{ route('dpdf', ['idCuota' => $dato->Id, 'id' => $formato->Id]) }}"><i class="fa fa-fw fa-download"></i> Descargar</a> --}}
                                 {{-- <a class="btn btn-sm btn-success" href="{{route('dpdf',{{$dato->Id}},{{$formato->Id}})}}"><i class="fa-solid fa-download"></i> Descargar</a> --}}
                             </td>

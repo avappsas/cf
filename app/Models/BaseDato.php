@@ -30,6 +30,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class BaseDato extends Model
 {
+    protected $table = 'Base_Datos';
     
     static $rules = [
     ];
@@ -41,7 +42,7 @@ class BaseDato extends Model
      *
      * @var array
      */
-    protected $fillable = ['id','Tipo_Doc','Documento','Nombre','Fecha_Nacimiento','Telefono','Celular','Direccion','Referido','Observacion','Profesion','Correo','Dv','correo_secop','Nivel_estudios','Perfil','Genero'];
+    protected $fillable = ['id','Tipo_Doc','Documento','Nombre','Fecha_Nacimiento','Telefono','Celular','Direccion','Referido','Observacion','Profesion','Correo','Dv','correo_secop','Nivel_estudios','Perfil','Genero','firma'];
 
 
 

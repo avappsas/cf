@@ -36,7 +36,7 @@ function marcarNumero(letra,num) {
           success: function(data) {
             numero.style.background = '#65E6A3';
             console.log(balota);
-            // numero.style.backgroundImage = "url('http://avapp.digital:88/AVA/public/images/arroyave/AVAPP2-02.png')"
+            // numero.style.backgroundImage = "url('http://avapp.digital:88/AVA/public/images/avapp/AVAPP2-02.png')"
             numero.style.fontWeight = 'bold'
           }
           

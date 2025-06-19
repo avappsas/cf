@@ -2,6 +2,9 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\WordToPdfController;
+use App\Http\Controllers\DocumentConverterController;
+use App\Http\Controllers\ContratacionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,3 +23,16 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
 
 Route::post('/sendWS', [App\Http\Controllers\MsmWhatsAppController::class, 'sendWS'])->middleware('auth:api');
 //como crear una api en laravel
+
+Route::post('/convert', [WordToPdfController::class, 'convert']);
+
+Route::middleware(['api'])->group(function () {
+    Route::post('/convert-to-pdf', [DocumentConverterController::class, 'convertToPdf']);
+});
+
+Route::post('getCertificado', [App\Http\Controllers\ContratoController::class, 'getCertificado'])->name('getCertificado');
+
+ 
+Route::post('contratacion/apigoogle', [ContratacionController::class, 'apigoogle']);
+Route::post('contratacion/apigoogleMultiple', [ContratacionController::class, 'apigoogleMultiple']);
+Route::get('contratacion/contrato-json', [App\Http\Controllers\ContratacionController::class, 'contratoJson'])->name('api.contrato-json');

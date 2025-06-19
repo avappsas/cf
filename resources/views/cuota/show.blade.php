@@ -14,7 +14,7 @@
                             <span class="card-title">Show Cuota</span>
                         </div>
                         <div class="float-right">
-                            <a class="btn btn-primary" href="{{ route('cuotas.index') }}"> Back</a>
+                            <a class="btn btn-primary" href="javascript:history.back()"> Back</a>
                         </div>
                     </div>
 

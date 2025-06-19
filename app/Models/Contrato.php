@@ -45,10 +45,12 @@ use Illuminate\Database\Eloquent\Model;
 class Contrato extends Model
 {
     
-    static $rules = [
-		'Id' => 'required',
+    static $rules = [ 
     ];
-
+    protected $table = 'contratos';
+    protected $primaryKey = 'Id';
+    public $incrementing = true;
+    protected $keyType = 'int'; 
     protected $perPage = 20;
 
     /**
@@ -56,8 +58,48 @@ class Contrato extends Model
      *
      * @var array
      */
-    protected $fillable = ['Id','No_Documento','Estado','Tipo_Contrato','Num_Contrato','Objeto','Actividades','Plazo','Valor_Total','Cuotas','Cuotas_Letras','Oficina','CDP','Fecha_CDP','Apropiacion','Interventor','Fecha_Estudios','Fecha_Idoneidad','Fecha_Notificacion','Fecha_Suscripcion','RPC','Fecha_Invitacion','Cargo_Interventor','Valor_Total_letras','Valor_Mensual','Valor_Mensual_Letras','N_C','Fecha_Venc_CDP','Nivel','Id_Dp','Valor_Cuota_1'];
+    protected $fillable = ['No_Documento','Estado','Tipo_Contrato','Num_Contrato','Objeto','Actividades','Plazo','Valor_Total','Cuotas','Cuotas_Letras','Oficina','CDP','Fecha_CDP','Apropiacion','Interventor'
+    ,'Fecha_Estudios','Fecha_Idoneidad','Fecha_Notificacion','Fecha_Suscripcion','RPC','Fecha_Invitacion','Cargo_Interventor','Valor_Total_letras','Valor_Mensual','Valor_Mensual_Letras','N_C','Fecha_Venc_CDP','Nivel'
+    ,'Id_Dp','Valor_Cuota_1','Origen','Año','Iva','id_user','Modalidad','Obs_Contrato','id_estado'];
 
+    protected $casts = [
+      
+      'Plazo'                 => 'date',
+      'Fecha_Notificacion'    => 'date',
+      'Fecha_Venc_CDP'        => 'date',
+      'Fecha_Estudios'        => 'date',
+      'Fecha_Invitacion'      => 'date',
+      'Fecha_Idoneidad'       => 'date',
+      'Fecha_CDP'             => 'date',
+      'Fecha_Suscripcion'     => 'date',
+      // etc.
+  ];
+  public function setValorTotalAttribute($value)
+  {
+      $this->attributes['Valor_Total'] = (int) preg_replace('/\D+/', '', $value);
+  }
 
+  public function setValorMensualAttribute($value)
+  {
+      $this->attributes['Valor_Mensual'] = (int) preg_replace('/\D+/', '', $value);
+  }
+
+  public function setValorCuota1Attribute($value)
+  {
+      $this->attributes['Valor_Cuota_1'] = (int) preg_replace('/\D+/', '', $value);
+  }
+
+  public function oficina()
+  {
+      // El FK real en tu tabla es N_Oficina
+      return $this->belongsTo(Oficina::class, 'N_Oficina', 'Id');
+  }
+
+ 
+//   public function interventor()
+//   {
+//       // 'Interventor' es la FK en contratos, 'Id' la PK de Interventores
+//       return $this->belongsTo(Interventor::class, 'Interventor', 'Id');
+//   }
 
 }

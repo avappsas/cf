@@ -8,6 +8,9 @@ use App\Models\User;
 use Illuminate\Foundation\Auth\RegistersUsers;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use DB;
+use App\Models\BaseDato;
+use Illuminate\Support\Facades\Auth;
 
 class RegisterController extends Controller
 {
@@ -66,14 +69,27 @@ class RegisterController extends Controller
     {
         //['name','email','usuario','activacion','perfil','foto']   bcrypt($request->password)
         //print_r(Hash::make($data['password']));die();
-        return User::create([
+
+        $user =User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'usuario' => $data['usuario'],
             'password' => Hash::make($data['password']),
             'activacion' => '1'
-            //Hash::make($data['password']),
-
+            //Hash::make($data['password']), 
         ]);
+
+        $id_user =$user->id;
+        
+        DB::update("insert into UserPerfil  select  $id_user as idUser, 2 as idPerfil ");
+
+        BaseDato::firstOrCreate(
+            ['Documento' => $user->usuario],           
+            [
+              'Nombre' => $user->name,
+              'Correo' => $user->email, 
+            ] ); 
+        return $user;
+
     }
 }

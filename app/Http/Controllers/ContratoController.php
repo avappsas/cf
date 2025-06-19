@@ -27,7 +27,8 @@ use Illuminate\Support\Facades\Http;
 use Spatie\PdfToText\Pdf as pdfTex;
 use Carbon\Carbon; // Asegúrate de importar Carbon
 use App\Mail\Notificacion;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Mail; 
+use App\Exports\ContratosExport;   // ← Asegúrate de esta línea
 
 /**
  * Class ContratoController
@@ -43,58 +44,228 @@ class ContratoController extends Controller
     public function index()
     {
         $fecha_actual = Carbon::now();
-        $id_dp = auth()->user()->id_dp;
-        $fecha_c = DB::table('fecha_cuenta')->where('id_dp', $id_dp)->where('fecha_max', '>=', $fecha_actual)->value('fecha_cuenta');
-        $fecha_formateada = date('d-m-Y', strtotime($fecha_c));
+        $id_dp = auth()->user()->id_dp; // identidica la dependencia
+        $id_pro = auth()->user()->pro ?? 0; // identifica si es version Pro
+        $fecha_c = DB::table('fecha_cuenta')
+            ->where('id_dp', $id_dp)
+            ->where('fecha_max', '>=', Carbon::now()->format('Y-m-d'))
+            ->value('fecha_cuenta');
         
+        $fecha_formateada = $fecha_c ? Carbon::parse($fecha_c)->format('j-M-Y') : null;
+ 
+ 
         if ($fecha_c) {
             // La fecha_cuenta está definida
             $fecha_mensaje = 'Informa que tu fecha para pasar cuenta es: ' . $fecha_formateada;
         } else {
             // La fecha_cuenta no está definida
-            $fecha_mensaje = 'Informa que tu fecha para pasar cuenta No se ha definido';
+            $fecha_mensaje = 'Informa que tu fecha para pasar cuenta no se ha definido';
         }
 
         $idusuario = auth()->user()->usuario;
-        $contratos = Contrato::where('No_Documento',$idusuario)
-        ->simplePaginate(50);
-
-        // $contratos = DB::select("select c.id as Id, Estado, Num_Contrato, o.oficina as Oficina, Plazo, Cuotas from contratos c
-        // join oficinas o on o.id=c.oficina
-        // where  No_Documento = $idusuario");
         
+        $contratos = DB::table('contratos as c')
+        ->leftjoin('oficinas as o', 'o.id', '=', 'c.oficina')
+        ->select('c.*', 'o.oficina as N_Oficina')
+        ->where('c.No_Documento', $idusuario)
+        ->orderByDesc('c.id')
+        ->simplePaginate(50);
+        
+        $contratoActividades = DB::table('contratos as c')
+        ->where('c.No_Documento', $idusuario)
+        ->where('c.Estado', 'Vigente')
+        ->orderByDesc('c.id') // o 'c.Id' si tu campo es con mayúscula
+        ->value('c.Actividades');
+        
+
         $operadores = DB::table('Operadores_planillas')
         // ->select()
         ->pluck(
             'Operador',
             'Id');
 
-        // print_r($operadores);die();
+        //print_r($contratoActividades);die();
 
-        return view('contrato.index', compact('contratos','operadores','fecha_mensaje','fecha_formateada'))
+        return view('contrato.index', compact('contratos','operadores','fecha_mensaje','fecha_formateada','id_pro','contratoActividades'))
             ->with('i', (request()->input('page', 1) - 1) * $contratos->perPage());
     }
+
+  public function edit($id)
+    {
+        // 1) Traer el modelo o fallar con 404
+        $contrato = Contrato::findOrFail($id);
+        $id_dp = DB::table('contratos')
+            ->where('id', $id) // ← corregido: usar $id en vez de $idContrato
+            ->value('Id_Dp');
+
+        // 2) Listados para selects
+        $oficinas = DB::table('Oficinas')
+            ->where('estado', 1)
+            ->where('id_dp', $id_dp)
+            ->pluck('Oficina', 'Id');
+
+        $interventores = DB::table('Interventores')
+            ->where('estado', 1)
+            ->where('id_dp', $id_dp)
+            ->pluck('nombre', 'Id');
+        
+        $max_nc = DB::table('contratos')
+        ->where('Id_Dp', $id_dp)
+        ->whereYear('Plazo', date('Y')) // solo del año actual
+        ->max('N_C');
+
+        $next_nc = $max_nc ? $max_nc + 1 : 1;
+
+        $next_num_contrato = '100.8.4.' . $next_nc . '.' . date('Y');
+    
+            
+        // 3) Obtener el nombre de la persona
+        $Documento = $contrato->No_Documento;          // ← punto y coma
+        $nombre    = DB::table('Base_Datos')
+                       ->where('Documento', $Documento)
+                       ->value('Nombre');             // devuelve string o null
+    
+        // 4) Renderizar la vista correcta con compact bien escrito
+        return view('contrato.form', [
+        'contrato'         => $contrato,
+        'oficinas'         => $oficinas,
+        'interventores'    => $interventores,
+        'nombre'           => $nombre,
+        'next_nc'          => $next_nc,
+        'next_num_contrato'=> $next_num_contrato,
+        ]);
+    }
+ 
+ 
 
     /**
      * Show the form for creating a new resource.
      *
      * @return \Illuminate\Http\Response
      */
-    public function create()
-    {
-        $contrato = new Contrato();
+  
+        public function create(Request $request)
+        {
+            // 1) Recibir la cédula por query-string: /contratos/create?documento=1234
+            $documento = $request->query('documento');
+        
+            // 2) Crear el modelo vacío y precargar la cédula
+            $contrato = new Contrato();
+            $contrato->No_Documento = $documento;
+        
+            // 3) Buscar el nombre en Base_Datos (solo nombre ahora)
+            $nombre = $documento
+                ? DB::table('Base_Datos')
+                    ->where('Documento', $documento)
+                    ->value('Nombre')
+                : null;
+        
+            // 4) Obtener id_dp desde el usuario autenticado
+            $id_dp = auth()->user()->id_dp;
 
-        $oficinas = DB::table ('Oficinas')
-        ->pluck('Oficina', 'Id'); 
+            $max_nc = DB::table('contratos')
+            ->where('Id_Dp', $id_dp)
+            ->whereYear('Plazo', date('Y')) // solo del año actual
+            ->max('N_C');
 
-        $interventores = DB::table ('Interventores')
-        ->pluck('nombre', 'Id'); 
-        // print_r( $interventores); die();
+            $next_nc = $max_nc ? $max_nc + 1 : 1;
+
+            $next_num_contrato = '100.8.4.' . $next_nc . '.' . date('Y');
+    
+            // 5) Cargar selects filtrados por id_dp
+            $oficinas = DB::table('Oficinas') ->where('estado', 1) ->where('id_dp', $id_dp) ->pluck('Oficina', 'Id');
+        
+            $interventores = DB::table('Interventores') ->where('estado', 1) ->where('id_dp', $id_dp) ->pluck('nombre', 'Id');
+        
+            // 6) Enviar datos a la vista
+            return view('contrato.form', compact(
+                'contrato',
+                'nombre',
+                'oficinas',
+                'interventores' ,'next_nc','next_num_contrato'
+            ));
+        }
 
 
-        return view('contrato.create', compact('contrato','oficinas','interventores'));
-    }
+        public function create2(Request $request)
+        {
+            // 1) Recibir la cédula por query-string: /contratos/create?documento=1234
+            $documento = $request->query('documento');
+        
+            // 2) Crear el modelo vacío y precargar la cédula
+            $contrato = new Contrato();
+            $contrato->No_Documento = $documento;
+        
+            // 3) Buscar el nombre en Base_Datos (solo nombre ahora)
+            $nombre = $documento
+                ? DB::table('Base_Datos')
+                    ->where('Documento', $documento)
+                    ->value('Nombre')
+                : null;
+        
+            // 4) Obtener id_dp desde el usuario autenticado
+            $id_dp = auth()->user()->id_dp; 
 
+            $inicio_estado = DB::table('Dependencias') ->where('Id', $id_dp) ->value('inicio_estado_contratacion');
+ 
+            // 5) Cargar selects filtrados por id_dp
+            $oficinas = DB::table('Oficinas') ->where('estado', 1) ->where('id_dp', $id_dp) ->pluck('Oficina', 'Id'); 
+        
+            // 6) Enviar datos a la vista
+            return view('contrato.inicio', compact('contrato','nombre','oficinas','inicio_estado'));
+
+        }
+
+
+           public function vercontratos($documento)
+        {
+            $id_dp    = auth()->user()->id_dp; 
+            // si también necesitas filtrar por dependencia, agrégalo en el WHERE
+            $idusuario = auth()->user()->usuario;
+
+            $nombre = DB::table('Base_Datos')
+            ->where('Documento', $documento)
+            ->value('Nombre');  // devuelve la cadena o null
+
+            $contratos = DB::table('contratos as c')
+                ->leftjoin('oficinas as o', 'o.id', '=', 'c.oficina')
+                ->select('c.*', 'o.oficina as N_Oficina')
+                ->where('c.No_Documento', $documento)
+                ->orderBy('c.Id', 'desc')   
+                ->simplePaginate(50);
+        
+            return view('contrato.vercontratos', compact('contratos', 'nombre','documento'))
+                ->with('i', (request()->input('page', 1) - 1) * $contratos->perPage());
+        }
+    
+        public function otrosi($id)
+        {
+            // 1) Recupera el contrato original
+            $orig = Contrato::findOrFail($id);
+        
+            // 2) Crea un nuevo Contrato y asigna sólo los campos que quieres copiar
+            $nuevo = new Contrato();
+            $nuevo->No_Documento  = $orig->No_Documento;
+            $nuevo->N_C           = $orig->N_C;
+            $nuevo->Num_Contrato  = $orig->Num_Contrato;
+            $nuevo->Oficina       = $orig->Oficina;
+            $nuevo->Interventor   = $orig->Interventor;
+            $nuevo->Nivel         = $orig->Nivel;
+            $nuevo->Objeto        = $orig->Objeto;
+            $nuevo->Actividades   = $orig->Actividades;
+            $nuevo->Modalidad     = 'Otrosí';
+        
+            // (Opcional) Si quieres que arranque en estado Vigente
+            $nuevo->Estado        = 'Vigente';
+        
+            // 3) Guarda el nuevo registro (SQL Server generará un nuevo Id automáticamente)
+            $nuevo->save();
+        
+            // 4) Redirige al edit del nuevo contrato
+            return redirect()
+                ->route('contratos.edit', $nuevo->Id)
+                ->with('success', 'Se creó el Otrosí correctamente.');
+        }
     /**
      * Store a newly created resource in storage.
      *
@@ -107,7 +278,7 @@ class ContratoController extends Controller
 
         $contrato = Contrato::create($request->all()); 
 
-        return redirect()->route('contratos_vigentes')
+        return redirect()->route('contratos.all')
             ->with('success', 'Contrato created successfully.');
     }
 
@@ -117,26 +288,26 @@ class ContratoController extends Controller
      * @param  int $id
      * @return \Illuminate\Http\Response
      */
-    public function show($id)
-    {
-        $contrato = Contrato::find($id);
+    // public function show($id)
+    // {
+    //     $contrato = Contrato::find($id);
 
+    //     return view('contrato.show', compact('contrato'));
+    // }
+    public function show(Contrato $contrato)
+    {
+ 
+    
         return view('contrato.show', compact('contrato'));
     }
-
     /**
      * Show the form for editing the specified resource.
      *
      * @param  int $id
      * @return \Illuminate\Http\Response
      */
-    public function edit($id)
-    {
-        $contrato = Contrato::find($id);
-
-        return view('contrato.edit', compact('contrato'));
-    }
-
+ 
+  
     /**
      * Update the specified resource in storage.
      *
@@ -144,14 +315,17 @@ class ContratoController extends Controller
      * @param  Contrato $contrato
      * @return \Illuminate\Http\Response
      */
+ 
     public function update(Request $request, Contrato $contrato)
     {
         request()->validate(Contrato::$rules);
-
+ 
         $contrato->update($request->all());
 
-        return redirect()->route('contratos.index')
-            ->with('success', 'Contrato updated successfully');
+        
+ 
+        $doc = $contrato->No_Documento;
+        return redirect()->away("https://cuentafacil.co/vercontratos/{$doc}");
     }
 
     /**
@@ -167,6 +341,18 @@ class ContratoController extends Controller
             ->with('success', 'Contrato deleted successfully');
     }
     
+    // ContratoController.php
+    public function interventoresPorOficina($oficinaId)
+    {
+    
+        $interventores = DB::table('Interventores')
+            ->where('estado', 1)
+            ->where('Id_oficina', $oficinaId) 
+            ->pluck('nombre', 'id');
+
+        return response()->json($interventores);
+    }
+
 
     public function generarDocumentosPDFs(Request $request)
     {
@@ -332,8 +518,7 @@ class ContratoController extends Controller
 
     public function btnMostrarPDF(Request $request)
     {
-        $id = $request->id;
-        // $id = 7;
+        $id = $request->id; 
         $queryFormatos = DB::select("select a.*
         from Formatos a
         inner join Contratos b
@@ -348,72 +533,36 @@ class ContratoController extends Controller
         
     }
 
-    public function gpdf(Request $request)
-    {
-        $id = $request->id; 
-        $idCuota = $request->idCuota;
-        // $idCuota = 7;
-        // $id = 2;
-        $queryFormatos = DB::select("select * from Formatos where Id = $id");
-        $vista = $queryFormatos[0]->Vista;
+public function gpdf(Request $request)
+{
+    $id      = $request->input('id');
+    $idCuota = $request->input('idCuota');
 
-        $queryResult = DB::select("SELECT 
-            CONVERT(VARCHAR(5000),b.Nombre) AS 'V_nombre', 
-            CONVERT(VARCHAR(5000),LTRIM(RTRIM(STR(c.No_Documento)))) AS 'V_CC', 
-            CONVERT(VARCHAR(5000),c.Estado) AS V_Estado, 
-            CONVERT(VARCHAR(5000),LTRIM(RTRIM(STR(c.Tipo_Contrato)))) AS V_Tipo_Contrato, 
-            CONVERT(VARCHAR(5000),c.Num_Contrato) AS V_Num_Contrato, 
-            CONVERT(VARCHAR(5000),c.Objeto) AS 'V_objeto', 
-            CONVERT(VARCHAR(5000),c.Plazo,103) AS V_Plazo, 
-            CONVERT(VARCHAR(5000),LTRIM(RTRIM(STR(c.Valor_Total)))) AS 'V_valor_contrato', 
-            CONVERT(VARCHAR(5000),LTRIM(RTRIM(STR(c.Cuotas)))) AS V_Cuotas, 
-            CONVERT(VARCHAR(5000),c.Cuotas_Letras) AS V_Cuotas_Letras, 
-            CONVERT(VARCHAR(5000),c.Oficina) AS 'V_oficina', 
-            CONVERT(VARCHAR(5000),c.CDP) AS V_CDP, 
-            CONVERT(VARCHAR(5000),c.Fecha_CDP,103) AS 'V_fecha_inicio', 
-            CONVERT(VARCHAR(5000),LTRIM(RTRIM(STR(c.Apropiacion)))) AS V_Apropiacion, 
-            CONVERT(VARCHAR(5000),c.Interventor) AS 'V_supervisor', 
-            CONVERT(VARCHAR(5000),c.Fecha_Estudios,103) AS V_Fecha_Estudios, 
-            CONVERT(VARCHAR(5000),c.Fecha_Idoneidad,103) AS V_Fecha_Idoneidad, 
-            CONVERT(VARCHAR(5000),c.Fecha_Notificacion,103) AS V_Fecha_Notificacion, 
-            CONVERT(VARCHAR(5000),c.Fecha_Suscripcion,103) AS V_Fecha_Suscripcion, 
-            CONVERT(VARCHAR(5000),c.RPC) AS V_RPC, 
-            CONVERT(VARCHAR(5000),c.Fecha_Invitacion,103) AS V_Fecha_Invitacion, 
-            CONVERT(VARCHAR(5000),c.Cargo_Interventor) AS V_Cargo_Interventor, 
-            CONVERT(VARCHAR(5000),c.Valor_Total_letras) AS 'V_valor_letras', 
-            CONVERT(VARCHAR(5000),LTRIM(RTRIM(STR(c.Valor_Mensual)))) AS 'V_valor_cuota', 
-			CONVERT(VARCHAR(5000),LTRIM(RTRIM(STR(c.Valor_Cuota_1)))) AS 'V_valor_cuota1', 
-            CONVERT(VARCHAR(5000),c.Valor_Mensual_Letras) AS V_Valor_Mensual_Letras, 
-            CONVERT(VARCHAR(5000),LTRIM(RTRIM(STR(c.N_C)))) AS 'V_no_contrato', 
-            CONVERT(VARCHAR(5000),c.Fecha_Venc_CDP,103) AS 'V_fecha_terminacion', 
-            CONVERT(VARCHAR(5000),c.Nivel) AS V_Nivel, 
-            CONVERT(VARCHAR(5000),LTRIM(RTRIM(STR(cc.Contrato)))) AS V_Contrato, 
-            CONVERT(VARCHAR(5000),cc.Cuota) AS 'V_no_cuota', 
-            CONVERT(VARCHAR(5000),cc.Fecha_Acta,103) AS 'V_fecha_cuenta', 
-            CONVERT(VARCHAR(5000),LTRIM(RTRIM(STR(cc.Porcentaje)))) AS V_Porcentaje, 
-            CONVERT(VARCHAR(5000),cc.Actividades) AS 'V_actividades', 
-            CONVERT(VARCHAR(5000),cc.Planilla) AS 'V_planilla', 
-            CONVERT(VARCHAR(5000),(select operador from cuenta.dbo.Operadores_planillas where id=cc.Operador_planilla)) as 'V_operador_p',             
-	        DATENAME(month, DATEADD(month, cc.Perioro_Planilla - 1, '1900-01-01')) AS 'V_periodo_nombre', 
-            CONVERT(VARCHAR(5000),cc.Pin_planilla) AS 'V_pin_planilla', 
-            CONVERT(VARCHAR(5000),cc.Operador_planilla) AS 'V_operador', 
-            CONVERT(VARCHAR(5000),cc.Fecha_pago_planilla,103) AS 'V_Fecha_pago_planilla', 
-            CONVERT(VARCHAR(5000),cc.Parcial) AS V_Parcial, 
-            CONVERT(VARCHAR(5000),cc.Mes_cobro) AS V_Mes_cobro, 
-            CONVERT(VARCHAR(5000),cc.Actividades_pp) AS 'V_actividades_pp',
-            CONVERT(VARCHAR(5000),cc.Actividades_tp) AS 'V_actividades_tp',
-            CONVERT(VARCHAR(5000),(SELECT sum(case when cuota=1 then b.[Valor_Cuota_1] else b.Valor_Mensual end) AS VM FROM cuotas a INNER JOIN Contratos b ON a.Contrato = b.id WHERE a.id <= $idCuota and contrato = (select contrato  from cuotas where id=$idCuota)  )) AS 'V_cancelado'
-        
-        FROM cuenta.dbo.Contratos c
-        INNER JOIN cuenta.dbo.Base_Datos b ON c.No_Documento = b.Documento
-        INNER JOIN cuenta.dbo.Cuotas cc ON c.id = cc.Contrato
-        WHERE cc.Id = $idCuota;");
-        
-        $datosPdf = $queryResult[0];
-        
-        return view($vista, compact('datosPdf'));
-        
+    // 1) Obtengo el formato, con binding de parámetros
+    $formato = DB::table('Formatos')->where('Id', $id)->first();
+    if (! $formato) {
+        abort(404, "Formato con Id {$id} no encontrado");
     }
+    $vista = $formato->Vista;
+
+    // 2) Obtengo los datos de la cuenta
+    $datosPdf = DB::table('Datos_cuenta')
+                  ->where('Id', $idCuota)
+                  ->first();
+    if (! $datosPdf) {
+        abort(404, "Datos de cuenta con Id {$idCuota} no encontrados");
+    }
+
+    // 3) Dependientes
+    $dependientes = DB::table('familiares_dependientes')
+        ->select('categoria','nombre','identificacion','parentesco')
+        ->where('documento_bd', $datosPdf->V_CC)
+        ->orderBy('categoria')
+        ->get();
+
+    // 4) Retorno la vista dinámica
+    return view($vista, compact('datosPdf', 'dependientes'));
+}
         
 
     public function registroCuotaa(Request $request)
@@ -446,7 +595,7 @@ class ContratoController extends Controller
         return $idCuota;
     }
 
-
+ 
     public function registroCuota(Request $request)
     {
         $idUser = auth()->user()->id; 
@@ -459,41 +608,9 @@ class ContratoController extends Controller
         $fecPago = $request->fecPago;
         $periodoPlanilla = $request->periodoPlanilla;
         $Actividades = $request->Actividades;
+        $Actividades_pp = $request->Actividades_pp;
+        $Actividades_tp = $request->Actividades_tp;
         $Accion = $request->accion;
-
-        $Actividades = str_replace('"',"",$Actividades);
-
-        $primeProm = "cambiar el siguiente texto en primera y tercera persona de todos los puntos y no incluyas pronombre luego corrige la ortografia y puntuaciones y comas y conservando los '<br>': '";
-        $segundoProm = "' y  retorna un json donde este los items primera_persona y dentro de este esten todos los puntos en primera persona en un solo texto y tercera_persona y dentro de este esten todos los puntos en tercera persona , guardando los saltos de linea con numeracion colocando un pipe . en un solo texto  ";
-        $prom = $primeProm .$Actividades .$segundoProm;
-        $apiKey = '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';
-        $endpoint = 'https://api.openai.com/v1/chat/completions';
-
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $apiKey,
-            'Content-Type' => 'application/json; charset=utf-8',
-        ])->post($endpoint, [
-            'model' => 'gpt-3.5-turbo',
-            // 'max_tokens' => 100000,
-            'messages' => [
-                ['role' => 'system', 'content' => 'eres la encargada de corregir ortografia acentos y puntuaciones de los texto que te pasen.'],
-                ['role' => 'user', 'content' => $prom],
-            ],
-        ]);
-
-        $respuestaActividades = $response->json()['choices'][0]['message']['content'];
-        $respuestaActividades = json_decode($respuestaActividades, true);
-
-        // Reemplazar "|" por saltos de línea
-        // $respuestaActividades = str_replace('|', PHP_EOL, $respuestaActividades);
-        $respuestaActividades = str_replace('|', '<br>', $respuestaActividades);
-
-        // print_r($respuestaActividades);die();
-        $Actividades_pp = $respuestaActividades['primera_persona'];
-        $Actividades_tp = $respuestaActividades['tercera_persona'];
-
-        // print_r($Actividades_pp);
-        // print_r($Actividades_tp);die();
 
         // Verificar el valor de $Accion
         if ($Accion == 1) {
@@ -552,7 +669,7 @@ class ContratoController extends Controller
         return $idCuota;
     }
 
-    
+        
 
 
     public function tablaCuotas(Request $request)
@@ -560,8 +677,14 @@ class ContratoController extends Controller
    
 
         $id = $request->id;
-        // print_r($id);die();
+       
         $datos = Cuota::where('Contrato',$id)->orderBy('Cuota','asc')->simplePaginate(12);
+        $num_contrato = DB::table('Contratos')
+                        ->where('id', $id)
+                        ->value('Num_Contrato');
+
+ 
+
         $format = DB::select("select a.*,c.Cuota,c.Id as idCuota
         from Formatos a
         inner join Contratos b
@@ -575,7 +698,7 @@ class ContratoController extends Controller
         $datosJson = json_encode($datos);   
         // print_r($datos);die();
         
-        return view('tabla-parcial', compact('datos','format','datosJson'));
+        return view('tabla-parcial', compact('datos','format','datosJson','num_contrato'));
     }
 
     
@@ -592,9 +715,11 @@ class ContratoController extends Controller
         
         $datos = DB::select("SELECT f.Id
         ,ca.Ruta
-        ,upper(ca.Estado) Estado
+        ,case when ca.Estado is null then (case when  f.Opcional=1  then 'OPCIONAL' else upper(ca.Estado) end) else upper(ca.Estado) end AS Estado
         ,ca.Observacion
-        ,upper(f.Nombre) Nombre,f.tipo
+        ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
+        ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
+        ,f.tipo
         ,$idContrato as idContrato
         ,$idCuota as idCuota
         FROM Formatos f Left JOIN 
@@ -607,7 +732,7 @@ class ContratoController extends Controller
                 inner join Cuotas c
                 on b.Id = c.Contrato
                 where b.Id = $idContrato and c.Id = $idCuota
-                and a.etapa <= case when c.Cuota = b.Cuotas then 2 else 1 end
+                and a.etapa <= (case when c.Cuota = b.Cuotas then 2 else 1 end) and a.tipo > (case when c.Cuota = 1 then -1 else 0 end)
         ) c on f.Id = c.Id
         order by f.tipo desc");
         // Convertir los datos a formato JSON
@@ -618,6 +743,37 @@ class ContratoController extends Controller
     }
 
     
+    public function cargueContrato(Request $request)
+    {
+         
+        $idContrato = $request->idContrato;
+        $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('Estado'); 
+    
+        $tipos = [3]; 
+        $estadoLow = strtolower($estadoContrato);        // Llevamos todo a minúsculas para comparar 
+        if ($estadoLow === 'firma hoja de vida' || $estadoLow === 'documentos aprobados') { $tipos[] = 5; } 
+        $inLista = implode(',', $tipos);
+
+        $datos = DB::select("SELECT f.Id
+        ,ca.Ruta
+        ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
+        ,ca.Observacion
+        ,upper(f.Nombre) Nombre,f.tipo
+        ,1 as idCuota
+        ,$idContrato as idContrato 
+        FROM Formatos f 
+		Left JOIN (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+        left join ( select distinct a.Id, b.Nivel
+                from Formatos a
+                inner join Contratos b
+                on a.Id_Dp = b.Id_Dp 
+                where b.Id = $idContrato   
+        ) c on f.Id = c.Id
+		where tipo IN ($inLista)
+        order by f.id asc"); 
+        
+        return view('tablaCargueDoc', compact('datos','estadoContrato'));
+    }
 
 
     public function uploadFile(Request $request)
@@ -627,7 +783,8 @@ class ContratoController extends Controller
         $idCuota = $request->idCuota;
         $idContrato = $request->idContrato;
         $idFormato = $request->idFormato;
-
+        $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('Estado');  
+        $idestadoContrato = DB::table('contratos')->where('id', $idContrato)->value('id_estado'); 
         // print_r($idCuota);die();
         
         // $datos = DB::select("");
@@ -640,7 +797,7 @@ class ContratoController extends Controller
         $archivoPDF = $request->file('archivo_pdf');
 
         // Generar un nombre de archivo único
-        $nombreArchivo = $idCuota . '_' .$idFormato  .'.' .$archivoPDF->getClientOriginalExtension();
+        $nombreArchivo = $idContrato . '_' . $idCuota . '_' .$idFormato  .'.' .$archivoPDF->getClientOriginalExtension();
 
         // Guardar el archivo en storage/app/doc_cuenta
         $rutaAlmacenamiento = 'public\doc_cuenta';
@@ -656,60 +813,260 @@ class ContratoController extends Controller
             $idFormato,@idCuota OUTPUT;
             SELECT @idCuota AS idCuota");
         
-        $idCargueArchivo = $queryResult[0]->idCuota;    
-        
-        $datos = DB::select("SELECT f.Id
-        ,ca.Ruta
-        ,upper(ca.Estado) Estado
-        ,ca.Observacion
-        ,upper(f.Nombre) Nombre,f.tipo
-        ,$idContrato as idContrato
-        ,$idCuota as idCuota
-        FROM Formatos f Left JOIN 
-        (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) =$idCuota AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
-        inner join (
-        select a.Id
-                from Formatos a
-                inner join Contratos b
-                on a.Id_Dp = b.Id_Dp
-                inner join Cuotas c
-                on b.Id = c.Contrato
-                where b.Id = $idContrato and c.Id = $idCuota
-                and a.etapa <= case when c.Cuota = b.Cuotas then 2 else 1 end
-        ) c on f.Id = c.Id
-        order by f.tipo desc");
-        
+        $idCargueArchivo = $queryResult[0]->idCuota; 
+
+        if ($idCuota == 1) {
+
+            if( str_contains($estadoContrato,'Solicitud CDP')){
+ 
+                    $datos = DB::select(" SELECT f.Id
+                    ,ca.Ruta
+                    ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
+                    ,ca.Observacion
+                    ,upper(f.Nombre) Nombre,f.tipo
+                    ,$idContrato as idContrato
+                    ,1 as idCuota
+                    FROM Formatos f Left JOIN 
+                    (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,1) =1 AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                    inner join (
+                    select a.* , b.Nivel 
+                            from Formatos a
+                            inner join Contratos b
+                            on a.Id_Dp = b.Id_Dp 
+                            where b.Id = $idContrato  
+                    ) c on f.Id = c.Id
+                    where c.buzon IN (1)
+                    order by f.Id asc"); 
+
+            } elseif( str_contains($estadoContrato,'RPC')){
+ 
+                    $datos = DB::select(" SELECT f.Id
+                    ,ca.Ruta
+                    ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
+                    ,ca.Observacion
+                    ,upper(f.Nombre) Nombre,f.tipo
+                    ,$idContrato as idContrato
+                    ,1 as idCuota
+                    FROM Formatos f Left JOIN 
+                    (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,1) =1 AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                    inner join (
+                    select a.* , b.Nivel 
+                            from Formatos a
+                            inner join Contratos b
+                            on a.Id_Dp = b.Id_Dp 
+                            where b.Id = $idContrato  
+                    ) c on f.Id = c.Id
+                    where c.buzon IN (2,3)
+                    order by f.Id asc"); 
+
+            }
+            
+            else {
+
+                    $tipos = [3]; 
+                    $estadoLow = strtolower($estadoContrato);        // Llevamos todo a minúsculas para comparar 
+                    if ($estadoLow === 'firma hoja de vida' || $estadoLow === 'documentos aprobados'|| $estadoLow === 'documentos aprobados') { $tipos[] = 5; } 
+                    $inLista = implode(',', $tipos); 
+
+                    $datos = DB::select(" SELECT f.Id
+                        ,ca.Ruta
+                        ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
+                        ,ca.Observacion
+                        ,upper(f.Nombre) Nombre,f.tipo
+                        ,$idContrato as idContrato
+                        ,1 as idCuota
+                        FROM Formatos f Left JOIN 
+                        (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,1) =1 AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                        inner join (
+                        select a.* , b.Nivel 
+                                from Formatos a
+                                inner join Contratos b
+                                on a.Id_Dp = b.Id_Dp 
+                                where b.Id = $idContrato  
+                        ) c on f.Id = c.Id
+                        where f.tipo IN ($inLista)
+                        order by f.Id asc"); 
+
+            }
+
+
+
+        } else {
+
+            $datos = DB::select("SELECT f.Id
+            ,ca.Ruta
+            ,case when ca.Estado is null then (case when  f.Opcional=1  then 'OPCIONAL' else upper(ca.Estado) end) else upper(ca.Estado) end AS Estado
+            ,ca.Observacion
+            ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
+            ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
+            ,f.tipo
+            ,$idContrato as idContrato
+            ,$idCuota as idCuota
+            FROM Formatos f Left JOIN 
+            (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) =$idCuota AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+            inner join (
+            select a.Id
+                    from Formatos a
+                    inner join Contratos b
+                    on a.Id_Dp = b.Id_Dp
+                    inner join Cuotas c
+                    on b.Id = c.Contrato
+                    where b.Id = $idContrato and c.Id = $idCuota
+                    and a.etapa <= (case when c.Cuota = b.Cuotas then 2 else 1 end) and a.tipo > (case when c.Cuota = 1 then -1 else 0 end)
+            ) c on f.Id = c.Id
+            order by f.tipo desc");
+        }
+
+
+          
         return view('tablaCargueDoc', compact('datos'));
     }
 
-    
+     public function uploadHV(Request $request)
+    {
+         
+        $idCuota = $request->idCuota;
+        $idCuotafiltro = $request->idCuota;
+        $idContrato = $request->idContrato;
+        $idFormato = $request->idFormato;
+        $estadoContrato = DB::table('contratos') ->where('id', $idContrato) ->value('Estado');
+        $idUser = auth()->user()->id;
+        $perfiUser = DB::table('UserPerfil') ->where('idUser', $idUser) ->where('idPerfil', '>', 2) ->pluck('idPerfil')  ->toArray();       
+        $perfil = $perfiUser[0] ; 
 
+
+        $request->validate([
+            'archivo_pdf' => 'required|mimes:pdf|max:2048', // PDF y tamaño máximo 2MB
+        ]);
+
+        $archivoPDF = $request->file('archivo_pdf');
+
+        // Generar un nombre de archivo único
+        $nombreArchivo = $idContrato . '_' . $idCuota . '_' .$idFormato  .'.' .$archivoPDF->getClientOriginalExtension();
+
+        // Guardar el archivo en storage/app/doc_cuenta
+        $rutaAlmacenamiento = 'public\doc_cuenta';
+        $archivoPDF->storeAs($rutaAlmacenamiento, $nombreArchivo);
+
+        // Obtener la URL del archivo almacenado
+        $rutaCompleta = Storage::path($rutaAlmacenamiento . '/' . $nombreArchivo);
+        
+        $queryResult = DB::select("SET NOCOUNT ON ;  DECLARE @idCuota INT; 
+            EXEC [dbo].[registroCargueArchivo] $idContrato,
+            $idCuota,
+            '$rutaCompleta',
+            $idFormato,@idCuota OUTPUT;
+            SELECT @idCuota AS idCuota");
+        
+        $idCargueArchivo = $queryResult[0]->idCuota; 
+
+                $tipos = [3];
+                if (strtoupper($estadoContrato) === 'Firma Hoja de Vida' || strtoupper($estadoContrato) === 'DOCUMENTOS APROBADOS') {
+                    $tipos[] = 5;
+                }
+                // Convertimos a un string '3,5' o '3' para el IN()
+                $inLista = implode(',', $tipos);
+  
+  
+        if($idCuota > 1 ) {
+
+                $datos = DB::select("SELECT f.Id
+                ,ca.Ruta
+                ,upper(ca.Estado) Estado
+                ,ca.Observacion
+                ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
+                ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
+                ,f.tipo
+                ,$idContrato as idContrato
+                ,$idCuota as idCuota,ca.Id as Id_cargue_archivo
+                FROM Formatos f Left JOIN 
+                (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) =$idCuota AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                inner join (
+                select a.Id
+                        from Formatos a
+                        inner join Contratos b
+                        on a.Id_Dp = b.Id_Dp
+                        inner join Cuotas c
+                        on b.Id = c.Contrato
+                        where b.Id = $idContrato and c.Id = $idCuota
+                        and a.etapa <= case when c.Cuota = b.Cuotas then 2 else 1 end
+                ) c on f.Id = c.Id
+                order by f.tipo desc");
+            
+
+        } else{   
+ 
+                    $datos = DB::select("SELECT f.Id
+                    ,ca.Ruta
+                    ,upper(ca.Estado) Estado
+                    ,ca.Observacion
+                    ,CASE WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' +  FORMAT( CAST( CASE WHEN ((SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 40 / 100) < 1423500 THEN '1.423.500' 
+                    ELSE ((SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 40 / 100)  END  AS MONEY), 'N0', 'es-ES')  ELSE UPPER(f.Nombre) END AS Nombre
+                    ,f.tipo
+                    ,$idContrato as idContrato
+                    ,1 as idCuota,ca.Id as Id_cargue_archivo
+                    FROM Formatos f Left JOIN 
+                    (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato   AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                    inner join (
+                    select a.Id
+                            from Formatos a
+                            inner join Contratos b
+                            on a.Id_Dp = b.Id_Dp 
+                            where b.Id = $idContrato  
+                            and a.tipo IN ($inLista)
+                    ) c on f.Id = c.Id
+                    order by f.tipo asc");
+        }
+
+            return view('tablaDocJuridica', compact('datos','estadoContrato','perfil')); 
+    }
+
+ 
 
     public function btnEnviarCuota(Request $request)
     {
         $idUser = auth()->user()->id;
         $idContrato = $request->idContrato;
         $idCuota = $request->idCuota;
+    
+        // Validación: si idCuota es nulo o igual a 1, redirigir
+        if (is_null($idCuota) || $idCuota == 1) {
+
+            $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('id_estado');  
+            $estado = DB::table('Cambio_estado')->where('id', $estadoContrato)->value('pos_estado'); 
+            $idnuevoestado = DB::table('Cambio_estado')->where('id', $estado)->first();
+
+            if ($idnuevoestado) {
+            DB::table('contratos')
+                ->where('id', $idContrato) 
+                    ->update(['Estado' => $idnuevoestado->EstadoUsuario,'id_estado' => $idnuevoestado->id]);
+            }
+
+        }
+ 
+        // Ejecutar SP
         $cambioEstado = DB::update("EXEC [sp_cambioEstado] $idCuota,2,1,$idUser;");
-        
-        // $queryResult = DB::update("UPDATE Cuotas SET Estado = 'ENVIADA',estado_juridica = 'PENDIENTE',UPDATED_AT = GETDATE()  WHERE Id = $idCuota");
-        
-        // print_r($id);die();
-        $datos = Cuota::where('Contrato',$idContrato)->orderBy('Cuota','asc')->simplePaginate(12);
-        $format = DB::select("select a.*,c.Cuota,c.Id as idCuota
-        from Formatos a
-        inner join Contratos b
-        on a.Id_Dp = b.Id_Dp
-        inner join Cuotas c
-        on b.Id = c.Contrato
-        where b.Id = $idContrato
-        and a.etapa = case when c.Cuota = b.Cuotas then 2 else 1 end
-		order by c.Cuota,a.Id");
-        // Convertir los datos a formato JSON
-        $datosJson = json_encode($datos);   
-        // print_r($datos);die();
-        
-        return view('tabla-parcial', compact('datos','format','datosJson'));
+    
+        // Obtener datos
+        $datos = Cuota::where('Contrato', $idContrato)->orderBy('Cuota', 'asc')->simplePaginate(12);
+
+        $num_contrato = DB::table('Contratos')
+        ->where('id', $idContrato)
+        ->value('Num_Contrato');
+
+        $format = DB::select("
+            select a.*, c.Cuota, c.Id as idCuota
+            from Formatos a
+            inner join Contratos b on a.Id_Dp = b.Id_Dp
+            inner join Cuotas c on b.Id = c.Contrato
+            where b.Id = $idContrato
+            and a.etapa = case when c.Cuota = b.Cuotas then 2 else 1 end
+            order by c.Cuota, a.Id
+        ");
+    
+        $datosJson = json_encode($datos);
+    
+        return view('tabla-parcial', compact('datos', 'format', 'datosJson','num_contrato'));
     }
 
 
@@ -718,14 +1075,16 @@ class ContratoController extends Controller
         
         $idContrato = $request->idContrato;
         
-        $datos = DB::select("select b.Id
-        ,case when (max(a.Cuota) + 1) <= b.Cuotas then (max(a.Cuota) + 1) else 1 end  cuota
-        ,case when (max(a.Cuota) + 1) <= b.Cuotas then 'Cuota ' + ltrim(rtrim(str((max(a.Cuota) + 1)))) else str(1) end  txtCuota
-        ,b.Cuotas
-        from Contratos b
-        left join Cuotas a on b.Id = a.Contrato
-        where b.id = $idContrato
-        group by b.Id,b.Cuotas");
+        $datos = DB::select("SELECT
+            b.Id, CASE  WHEN (MAX(a.Cuota) + 1) <= b.Cuotas THEN (MAX(a.Cuota) + 1)  ELSE 1 END AS cuota,
+            CASE  WHEN (MAX(a.Cuota) + 1) <= b.Cuotas  THEN 'Cuota ' + LTRIM(RTRIM(STR((MAX(a.Cuota) + 1))))  ELSE STR(1) 
+            END AS txtCuota, b.Cuotas,
+            FORMAT( DATEADD(  MONTH, ( CASE WHEN (MAX(a.Cuota) + 1) <= b.Cuotas THEN (MAX(a.Cuota) + 1) ELSE 1 END ) - 1, b.Fecha_Suscripcion ), 'MMMM', 'es-ES' ) AS Mes_cuota
+        FROM Contratos b
+        LEFT JOIN Cuotas a ON b.Id = a.Contrato
+        WHERE b.Id = $idContrato
+        GROUP BY  b.Id, b.Cuotas, b.Fecha_Suscripcion;");
+ 
 
         // Convertir los datos a formato JSON
         $datosJson = json_encode($datos);
@@ -741,7 +1100,7 @@ class ContratoController extends Controller
 
         // Obtén la lista de archivos a comprimir
         $archivosAComprimir = DB::select("select a.Id_contrato 
-        ,replace(a.Ruta,'http://avapp.digital/cf/public/storage','public') as Ruta
+        ,replace(a.Ruta,'https://cuentafacil.co/storage','public') as Ruta
         ,d.Nombre as nameContratista,c.Nombre as nameFile,id_cuota 
         ,e.Cuota
         from Cargue_Archivo a
@@ -753,7 +1112,7 @@ class ContratoController extends Controller
         and id_cuota = $idCuota and a.Estado = 'APROBADA'
         union all
         select distinct a.Id_contrato
-        ,replace(a.Ruta,'http://avapp.digital/cf/public/storage','public') as Ruta
+        ,replace(a.Ruta,'https://cuentafacil.co/storage','public') as Ruta
         ,d.Nombre as nameContratista,c.Nombre as nameFile,e.Id 
         ,e.Cuota
         from Cargue_Archivo a
@@ -823,7 +1182,7 @@ class ContratoController extends Controller
 
         // Obtén la lista de archivos a comprimir
         $archivosAComprimir = DB::select("select a.Id_contrato 
-        ,replace(a.Ruta,'http://avapp.digital/cf/public/storage','public') as Ruta
+        ,replace(a.Ruta,'https://cuentafacil.co/storage','public') as Ruta
         ,d.Nombre as nameContratista,c.Nombre as nameFile,id_cuota 
         ,e.Cuota
         from Cargue_Archivo a
@@ -835,7 +1194,7 @@ class ContratoController extends Controller
         and id_cuota is not null
         union all
         select distinct a.Id_contrato
-        ,replace(a.Ruta,'http://avapp.digital/cf/public/storage','public') as Ruta
+        ,replace(a.Ruta,'https://cuentafacil.co/storage','public') as Ruta
         ,d.Nombre as nameContratista,c.Nombre as nameFile,e.Id 
         ,e.Cuota
         from Cargue_Archivo a
@@ -886,69 +1245,158 @@ class ContratoController extends Controller
     }
 
 
-public function contratos_vigentes(Request $request)
-{
-    $periodoSeleccionado = $request->input('periodo', ''); 
-    $documento = $request->input('documento', ''); 
-    $nombre = $request->input('nombre', ''); 
-    $id_dp = auth()->user()->id_dp;
+    public function allcontratos(Request $request)
+    {
+        // 1. Parámetros de búsqueda
+        $query  = $request->input('query');
+        $estado = $request->input('estado', '');
+        $anio   = $request->input('anio', date('Y'));
+        $mes    = $request->input('mes');
+    
+        // 2. Consulta base
+        $q = DB::table('Historico_Contratos')
+            ->orderByDesc('N_C');
+    
+        // 3. Filtro por nombre dividido o documento
+        if (!empty($query)) {
+            $partes = explode(' ', trim($query));
+        
+            $q->where(function ($sub) use ($partes, $query) {
+                foreach ($partes as $parte) {
+                    $sub->where('Nombre', 'like', "%{$parte}%"); // ← cambia a where para combinar con AND
+                }
+        
+                // También buscar por documento si es numérico
+                if (is_numeric($query)) {
+                    $sub->orWhere('Documento', 'like', "%{$query}%");
+                }
+            });
+        }
+    
+        // 4. Filtro por estado
+        if ($estado !== null && $estado !== '') {
+            $q->where('Estado', $estado);
+        }
+    
+        // 5. Filtro por año (Fecha_Fin)
+        if (!empty($anio)) {
+            $q->whereYear('Fecha_Fin', $anio);
+        }
+    
+        // 6. Filtro por mes (Fecha_Inicio)
+        if (!empty($mes)) {
+            $q->whereMonth('Fecha_Inicio', $mes);
+        }
+    
+        // 7. Ejecutar paginación
+        $contratos = $q->simplePaginate(50);
+    
+        // 8. Listas para filtros
+        $estados = DB::table('Historico_Contratos')
+            ->select('Estado')
+            ->groupBy('Estado')
+            ->pluck('Estado', 'Estado');
+    
+        $anios = DB::table('Historico_Contratos')
+            ->selectRaw('YEAR(Fecha_Inicio) as year')
+            ->groupByRaw('YEAR(Fecha_Inicio)')
+            ->orderByDesc('year')
+            ->pluck('year', 'year');
+    
+        $meses = [
+            ''  => '-- Todos --',
+            '1' => 'Enero', '2' => 'Febrero', '3' => 'Marzo',
+            '4' => 'Abril', '5' => 'Mayo', '6' => 'Junio',
+            '7' => 'Julio', '8' => 'Agosto', '9' => 'Septiembre',
+            '10' => 'Octubre', '11' => 'Noviembre', '12' => 'Diciembre',
+        ];
+    
+        // 9. Retornar la vista
+        return view('Contratacion.allcontratos', compact(
+            'contratos', 'estados', 'anios', 'meses',
+            'query', 'estado', 'anio', 'mes'
+        ));
+    }
+    
+    
+    
+    public function export(Request $request)
+    {
+        // Toma todos los filtros de la query string
+        $filters = $request->only(['query','estado','anio','mes']);
 
-    // Generar dinámicamente las opciones de periodo
-    $opcionesPeriodo = [];
+        //validacion para forzar a exportar solo el anio 2025
+        $filters['anio'] = '2025';
 
-    // Obtener el mes y el año actuales
-    $mesActual = date('m');
-    $anioActual = date('Y');
-
-    // Concatenar el mes y el año para formar el período actual
-    $periodoActual = str_pad($mesActual, 2, '0', STR_PAD_LEFT) . $anioActual;
-
-    for ($i = 1; $i <= 12; $i++) {
-        $mes = str_pad($i, 2, '0', STR_PAD_LEFT);
-        $anio = date('Y');
-
-        $periodo = "$mes$anio";
-
-        // Agregar la opción con un marcador para identificar el período actual
-        $opcionesPeriodo[$periodo] = ($i == $mesActual) ? "Periodo $periodo (Actual)" : "Periodo $periodo";
+        // Genera y descarga el Excel
+        return Excel::download(
+            new ContratosExport($filters),
+            'contratos_export_' . date('Ymd_His') . '.xlsx'
+        );
     }
 
-    // Si no se ha seleccionado ningún período, establecer el período actual como seleccionado por defecto
-    if (empty($periodoSeleccionado)) {
-        $periodoSeleccionado = $periodoActual;
+    public function contratos_vigentes(Request $request)
+    {
+        $id_dp               = auth()->user()->id_dp;
+        $search              = trim($request->input('search',''));
+        $periodoSeleccionado = $request->input('periodo');
+        $fSupervisor         = $request->input('supervisor','');
+    
+        // Generar períodos...
+        $mesActual     = now()->month;
+        $anioActual    = now()->year;
+        $periodoActual = str_pad($mesActual,2,'0',STR_PAD_LEFT) . $anioActual;
+    
+        $opcionesPeriodo = collect(range(1,12))
+            ->mapWithKeys(fn($mes) => [
+                $mm = str_pad($mes,2,'0',STR_PAD_LEFT) . $anioActual
+                => "Periodo {$mm}" . ($mes === $mesActual ? ' (Actual)' : '')
+            ])->toArray();
+    
+        $periodoSeleccionado ??= $periodoActual;
+    
+        $listaSupervisores = DB::table('interventores')
+            ->where('estado',1)
+            ->orderBy('NOMBRE')
+            ->pluck('NOMBRE');
+    
+        $query = DB::table('Informe_Cuentas')
+            ->where('Id_Dp', $id_dp)
+            ->where(function($q) use ($periodoSeleccionado) {
+                $q->where('periodo', $periodoSeleccionado)
+                  ->orWhereNull('periodo');
+            });
+    
+        // 1) Búsqueda flexible sólo en Nombre, documento o contrato
+        if ($search !== '') {
+            $query->where(function($q) use ($search) {
+                $like = "%{$search}%";
+                $q->where('Nombre',       'like', $like)
+                  ->orWhere('No_Documento','like', $like)
+                  ->orWhere('Num_Contrato','like', $like);
+            });
+        }
+    
+        // 2) Filtro de supervisor sólo si no está vacío
+        $fSupervisor = $request->input('supervisor');
+
+        if ($request->filled('supervisor')) {
+            // Sólo filtra si supervisor existe y no es cadena vacía
+            $query->where('Supervisor', $fSupervisor);
+        }
+    
+        $datos = $query
+            ->orderBy('Nombre')
+            ->paginate(25)
+            ->appends($request->only(['periodo','search','supervisor']));
+    
+        return view('Contratacion.contratos_vigentes', compact(
+            'datos','periodoSeleccionado','periodoActual',
+            'opcionesPeriodo','search','fSupervisor','listaSupervisores'
+        ));
     }
-
-    $query = "
-    SELECT DISTINCT Num_Contrato, No_Documento, b.nombre, a.Estado, a.Interventor, Plazo, Cuotas, (select Oficina from oficinas where id=a.oficina) as Oficina,
-   (SELECT RIGHT(REPLACE(CONVERT(VARCHAR(10), DATEADD(MONTH, cuota - 1, CONVERT(DATETIME, a.Fecha_Notificacion, 105)), 105), '-', ''), 6)
-    FROM cuenta.dbo.cuotas
-    WHERE a.id = contrato AND (RIGHT(REPLACE(CONVERT(VARCHAR(10), DATEADD(MONTH, cuota - 1, CONVERT(DATETIME, a.Fecha_Notificacion, 105)), 105), '-', ''), 6))
-    ='$periodoSeleccionado') AS mes,
-   (SELECT Cuota FROM cuenta.dbo.cuotas WHERE a.id = contrato AND (RIGHT(REPLACE(CONVERT(VARCHAR(10), DATEADD(MONTH, cuota - 1, CONVERT(DATETIME, a.Fecha_Notificacion, 105)), 105), '-', ''), 6))
-   ='$periodoSeleccionado') AS Cuota,
-   (SELECT Estado_juridica FROM cuenta.dbo.cuotas WHERE a.id = contrato AND (RIGHT(REPLACE(CONVERT(VARCHAR(10), DATEADD(MONTH, cuota - 1, CONVERT(DATETIME, a.Fecha_Notificacion, 105)), 105), '-', ''), 6))
-   ='$periodoSeleccionado') AS Estado_juridica,
-   (SELECT name FROM cuenta.dbo.cuotas INNER JOIN Cuenta.dbo.users u ON id_user = u.id WHERE a.id = contrato AND (RIGHT(REPLACE(CONVERT(VARCHAR(10), DATEADD(MONTH, cuota - 1, CONVERT(DATETIME, a.Fecha_Notificacion, 105)), 105), '-', ''), 6))
-   ='$periodoSeleccionado') AS Responsable
-   FROM [Cuenta].[dbo].[Contratos] a
-   INNER JOIN cuenta.dbo.Base_Datos b ON a.No_Documento = b.Documento
-   WHERE a.ESTADO = 'VIGENTE' and Id_Dp = $id_dp
-   ";
-
-    if ($documento != '') {
-        $query .= " AND a.No_Documento = '$documento'";
-    }
-
-    if ($nombre != '') {
-        $query .= " AND b.nombre LIKE '%$nombre%'";
-    }
-
-    // Ejecutar la consulta y obtener los datos
-    $datos = DB::select($query);
-
-    return view('contratos_vigentes', compact("datos", "periodoSeleccionado", "opcionesPeriodo", "periodoActual"));
-}
-
+    
+    
 
 
     public function readPdf(Request $request)
@@ -1019,4 +1467,55 @@ public function contratos_vigentes(Request $request)
         
     }
 
+
+
+    public function getCertificado(Request $request)
+    {
+        // Obtener parámetros de la solicitud
+        $nombre = $request->input('nombre');
+        $no_documento = $request->input('cedula');
+        $anio = $request->input('anio');
+
+        // Fecha actual
+        $fecha_hoy = Carbon::now();
+
+        // Consulta a la base de datos usando parámetros seguros
+        $contratos = DB::select("
+                         SELECT     *
+            FROM            [Cuenta].[dbo].[Historico_Contratos] AS c  
+            WHERE c.No_documento = :no_documento 
+            AND isnull(c.Año,c.Año) = isnull($anio,c.Año)
+            order by c.Año desc, c.N_C desc
+        ", [
+            'no_documento' => $no_documento
+        ]);
+
+        // Convertir resultados a arrays
+        $contratos = array_map(function ($contrato) {
+            return (array) $contrato;
+        }, $contratos);
+        // ddd($contratos);
+        // Si no se encuentran contratos, retornar un error o mensaje
+        if (empty($contratos)) {
+            return back()->with('error', 'No se encontraron contratos para el documento y año especificados.');
+        }
+
+        // Retornar la vista con los datos
+        // return view('Contratacion.Certificacionlaboral', compact(
+        //     'nombre',
+        //     'no_documento',
+        //     'contratos',
+        //     'fecha_hoy'
+        // ));
+
+        // Opcional: Generar PDF
+        $pdf = PDF::loadView('Contratacion.Certificacionlaboral', compact('nombre', 'no_documento', 'contratos', 'fecha_hoy'));
+        return $pdf->download("certificado-$nombre.pdf");
+    }
+
+
+
+
+
+    
 }

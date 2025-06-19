@@ -7,9 +7,9 @@ let idCuotaPro = 0;
 
 
 function btnAbrirModalVerDocCuotas(idContrato,idCuota,nombre){
-    
+ 
     $.ajax({
-        url: ('/cf/public/verDocJuridica'),
+        url: ('/verDocJuridica'),
         type:'get',
         data: {_token:dataToken, idContrato:idContrato,idCuota:idCuota},
         success: function(data) {
@@ -22,92 +22,226 @@ function btnAbrirModalVerDocCuotas(idContrato,idCuota,nombre){
     });
 }
 
+function btnAbrirModalVerDocContratos(idContrato,nombre){
+ 
+        // 2) Ajustar dinámicamente los onclick de los botones Devolver / Aprobar
+        $('#btnDevolver').attr('onclick', 'cambioEstadoCuenta(0, ' + idContrato + ')');
+        $('#btnAprobar').attr('onclick', 'cambioEstadoCuenta(1, ' + idContrato + ')');
+        $('#btnDevolverHV').attr('onclick', 'cambioEstadoCuenta(2, ' + idContrato + ')');
+        $('#btnAprobar3').attr('onclick', 'cambioEstadoCuenta(3, ' + idContrato + ')');
+        
+    $.ajax({
+        url: ('/verDoccontratos'),
+        type:'get',
+        data: {_token:dataToken, idContrato:idContrato},
+        success: function(data) {
+            $('#tablaDocs').empty();
+            $('#tablaDocs').html(data);
+            $('#nameContratista').html('<i class="fa fa-fw fa-file-contract"></i> ' + nombre);
+            // console.log(data);
+            $('#modalDocUploadCuota').modal('show');
+        }
+    });
+}
+
+ 
+function solicitarCDP(id) {
+  $.ajax({
+    url: '/solicitud-cdp',      // coincide con tu Route::post('solicitud-cdp',…)
+    type: 'POST',
+    data: { id: id, _token: dataToken },
+      success: function(response) {
+      const msg = response.success
+        ? 'Solicitud de CDP enviada.'
+        : 'No se pudo enviar la solicitud.';
+      Swal.fire({
+        title: msg,
+        icon: response.success ? 'success' : 'error',
+        confirmButtonText: 'Ok'
+      }).then(() => {
+        location.reload();
+      });
+    },
+      error: function() {
+      Swal.fire({
+        title: 'Error de comunicación.',
+        icon: 'error',
+        confirmButtonText: 'Ok'
+      }).then(() => {
+        location.reload();
+  });
+}
+  });
+}
+
+
 function AbrirPDFM(Ruta){
     
     if (Ruta !=''){
         document.getElementById('pdfEmbed').src = Ruta;
     }else{
-        document.getElementById('pdfEmbed').src = 'http://cf.avapp.digital/cf/public/storage/doc_cuenta/predeterminado.pdf';
+        document.getElementById('pdfEmbed').src = 'https://cuentafacil.co/storage/doc_cuenta/predeterminado.pdf';
     }
     // $('#modalVerDocCuota').modal('show');
 
 }
 
 
-function cambioEstado(idArchivo,estado,idCuota,idContrato){
-    
-    var observacion = document.getElementById('obs_' + idArchivo).value;
-    if(observacion == '' && estado == 'DEVUELTA'){
-        Swal.fire({
-            // title: "The Internet?",
-            text: "Debe registrar el motivo u observacion de rechazo del documento.",
-            icon: "error"
-          });
-    }else{
-        $.ajax({
-            url: ('/cf/public/cambioEstadoFile'),
-            type:'get',
-            data: {_token:dataToken, idArchivo:idArchivo,estado:estado,observacion: observacion,idCuota:idCuota,idContrato:idContrato},
-            success: function(data) {
-                if(estado == 'DEVUELTA'){
-                    Swal.fire({
-                        // title: "The Internet?",
-                        text: "Documento rechazado.",
-                        icon: "error"
-                      });
-                }else{
-                    Swal.fire({
-                        // title: "The Internet?",
-                        text: "Documento aprobado.",
-                        icon: "success"
-                      });
-                }
-                
-                    // Actualizar el contenido del modal con la nueva vista
-                    $('#tablaDocs').html(data);
-            }
-        });
-    }
-}
+function cambioEstado(idArchivo, estado, idCuota, idContrato) {
+  const observacion = document
+    .getElementById('obs_' + idArchivo)
+    .value
+    .trim();
 
+  // Estados que requieren motivo u observación
+  const requiereMotivo = ['DEVUELTA', 'Firma Hoja de Vida'];
 
-function cambioEstadoCuenta(estado){
-    
-    
-    var idCuota = document.getElementById('idCuota').value;
-    $.ajax({
-        url: ('/cf/public/cambioEstadoCuenta'),
-        type:'get',
-        data: {_token:dataToken, estado:estado,idCuota:idCuota},
-        success: function(data) {
-            if(estado == 0){
-                Swal.fire({
-                    // title: "The Internet?",
-                    text: "Cuenta rechazada.",
-                    icon: "error"
-                  });
-                
-                $('#modalDocUploadCuota').modal('hide');  
-                setTimeout(function() {
-                    location.reload();
-                }, 1000);
-            }else{
-                Swal.fire({
-                    // title: "The Internet?",
-                    text: "Cuenta aprobada.",
-                    icon: "success"
-                  });
-                  $('#modalDocUploadCuota').modal('hide');   
-                  setTimeout(function() {
-                      location.reload();
-                  }, 1000);
-            }
-            
-                // Actualizar el contenido del modal con la nueva vista
-                $('#tablaDocs').html(data);
-        }
+  if (requiereMotivo.includes(estado) && observacion === '') {
+    return Swal.fire({
+      text: 'Debe registrar el motivo u observación del documento.',
+      icon: 'error'
     });
+  }
+
+  // Si ya pasó la validación, enviamos el cambio
+  $.ajax({
+    url: '/cambioEstadoFile',
+    type: 'GET',
+    data: {
+      _token: dataToken,
+      idArchivo,
+      estado,
+      observacion,
+      idCuota,
+      idContrato
+    },
+    success: function(data) {
+      let texto, icon;
+      if (estado === 'DEVUELTA') {
+        texto = 'Documento Devuelto.';
+        icon = 'error';
+      } else if (estado === 'Firma Hoja de Vida') {
+        texto = 'Hoja de vida para firma.';
+        icon = 'info';
+      } else {
+        texto = 'Documento Avanzando.';
+        icon = 'success';
+      }
+
+      Swal.fire({ text: texto, icon });
+      $('#tablaDocs').html(data);
+    }
+  });
 }
+
+
+function cambioEstadoCuenta(estado, idContrato) {
+  const miTabla = document.getElementById('tablaDocss');
+  const idCuota = document.getElementById('idCuota').value;
+
+  if (estado === 1) {
+    // --- APROBAR: todas las filas con documento deben estar en 'aprobada' ---
+    for (let i = 1; i < miTabla.rows.length; i++) {
+      const row = miTabla.rows[i];
+      const estadoCell = row.cells[0].dataset.estado?.trim().toLowerCase() || '';
+      // Saltamos filas sin estado (sin documento)
+      if (!estadoCell) continue;
+      if (estadoCell !== 'aprobada') {
+        return Swal.fire({
+          text: 'No puedes aprobar: hay al menos un documento pendiente o devuelto.',
+          icon: 'error'
+        });
+      }
+    }
+  }
+  else if (estado === 0) {
+    // --- DEVOLVER: basta con que haya al menos un 'devuelta' ---
+    let alguna = false;
+    for (let i = 1; i < miTabla.rows.length; i++) {
+      const row = miTabla.rows[i];
+      const estadoCell = row.cells[0].dataset.estado?.trim().toLowerCase() || '';
+      if (estadoCell === 'devuelta') {
+        alguna = true;
+        break;
+      }
+    }
+    if (!alguna) {
+      return Swal.fire({
+        text: 'Para devolver debe haber al menos un documento marcado como DEVUELTA.',
+        icon: 'error'
+      });
+    }
+  }
+
+else if (estado === 2) {
+    // validación de Hoja de Vida (Firmada)
+    const filas = Array.from(miTabla.rows).slice(1);
+    const hvRow = filas.find(row => 
+      row.cells[1].textContent.trim().toLowerCase() === 'hoja de vida (firmada)'
+    );
+    if (!hvRow) {
+      return Swal.fire({
+        text: 'Debe existir el campo "Hoja de vida (Firmada)".',
+        icon: 'error'
+      });
+    }
+    const estadoHv = hvRow.cells[0].dataset.estado.trim().toLowerCase();
+    if (!['cargado','aprobada'].includes(estadoHv)) {
+      return Swal.fire({
+        text: 'La "Hoja de vida (Firmada)" debe estar en estado CARGADO o APROBADA.',
+        icon: 'error'
+      });
+    }
+  }
+ 
+  if (estado === 3) {
+    // Confirmación de supervisor
+    return Swal.fire({
+      title: 'Confirmación de Supervisor',
+      text: 'Confirma que sus documentos ya están revisados y firmados por ti como Supervisor?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, confirmo',
+      cancelButtonText: 'No, cancelar',
+    }).then((result) => {
+      if (result.isConfirmed) {
+          $.ajax({
+            url: '/cambioEstadoCuenta',
+            type: 'GET',
+            data: { _token: dataToken, estado, idCuota, idContrato },
+            success(data) {
+              let msg = 'Cuenta actualizada.', icon = 'success';
+              if (estado === 0)      { msg = 'Cuenta Devuelta.';      icon = 'error'; }
+              else if (estado === 2) { msg = 'Hoja de vida enviada para firmar.'; icon = 'info';  }
+              else if (estado === 3) { msg = 'Cuenta enviada para revisión.'; icon = 'info';  }
+              Swal.fire({ text: msg, icon });
+              $('#modalDocUploadCuota').modal('hide');
+              setTimeout(() => location.reload(), 1000);
+            }
+          });  // sólo si confirma
+      }
+      // si cancela, no hace nada
+    });
+  }
+  
+  // Si llegó aquí, pasa la validación → enviamos la petición
+  $.ajax({
+    url: '/cambioEstadoCuenta',
+    type: 'GET',
+    data: { _token: dataToken, estado, idCuota, idContrato },
+    success(data) {
+      let msg = 'Cuenta actualizada.', icon = 'success';
+      if (estado === 0)      { msg = 'Cuenta Devuelta.';      icon = 'error'; }
+      else if (estado === 2) { msg = 'Hoja de vida enviada para firmar.'; icon = 'info';  }
+      else if (estado === 3) { msg = 'Cuenta enviada para revisión.'; icon = 'info';  }
+      Swal.fire({ text: msg, icon });
+      $('#modalDocUploadCuota').modal('hide');
+      setTimeout(() => location.reload(), 1000);
+    }
+  });
+}
+
+ 
 
 $(document).ready(function () {
     $('#tabAprobadas').on('click', function () {
@@ -166,7 +300,7 @@ function contabilizar(){
         showLoaderOnConfirm: true,
         preConfirm: async (idLote) => {
             try {
-            //   const response = await fetch(`/cf/public/generarZip?idLotes=${idLote}&_token=${dataToken}`);
+            //   const response = await fetch(`/generarZip?idLotes=${idLote}&_token=${dataToken}`);
           
               if (!response.ok) {
                 throw new Error('Error creating lot');
@@ -210,7 +344,7 @@ function enviarLote(){
       // imageAlt: "Custom image",
       didOpen: async () => {
           try {
-              const response = await fetch(`/cf/public/enviarAdmin?_token=${dataToken}`);
+              const response = await fetch(`/enviarAdmin?_token=${dataToken}`);
               if (!response.ok) {
                   throw new Error('Error al enviar el paquete');
               }
@@ -250,7 +384,7 @@ function enviarLote(){
         imageHeight: 60,
         didOpen: async () => {
             try {
-                const response = await fetch(`/cf/public/generarZipSap?idCuota=${idCuota}&_token=${dataToken}`);
+                const response = await fetch(`/generarZipSap?idCuota=${idCuota}&_token=${dataToken}`);
                 
                 if (!response.ok) {
                     throw new Error('Error al crear lote');
@@ -288,7 +422,7 @@ function enviarLote(){
 //             showLoaderOnConfirm: true,
 //             preConfirm: async (documento) => {
 //                 try {
-//                   const response = await fetch(`/cf/public/validarDocumento?documento=${documento}&_token=${dataToken}`);
+//                   const response = await fetch(`/validarDocumento?documento=${documento}&_token=${dataToken}`);
               
 //                   if (response.ok) {
 //                     console.log(response.value)
@@ -316,14 +450,14 @@ function validarDocumento() {
         showLoaderOnConfirm: true,
         preConfirm: async (documento) => {
             try {
-                const response = await fetch(`/cf/public/validarDocumento?documento=${documento}&_token=${dataToken}`);
+                const response = await fetch(`/validarDocumento?documento=${documento}&_token=${dataToken}`);
                 if (response.ok) {
                     const data = await response.json();
                     const val = data.val;
                     console.log(val)
                     if (data != 0) {
                         // Si val es igual a 0, abrir vista correspondiente
-                        window.location.href = '/cf/public/contratos/create';
+                        window.location.href = '/contratos/create';
                     } else {
                         // Si val no es igual a 0, mostrar advertencia
                         Swal.fire({
@@ -332,7 +466,7 @@ function validarDocumento() {
                             icon: "warning",
                             confirmButtonText: "OK",
                             preConfirm: () => {
-                                window.location.href = '/cf/public/base-datos/create';
+                                window.location.href = '/base-datos/create';
                             }    
                         });
 
@@ -348,7 +482,7 @@ function validarDocumento() {
     }).then((result) => {
         // Si el usuario cierra la advertencia, redirigir a otra vista
         if (result.dismiss === Swal.DismissReason.close) {
-            window.location.href = '/cf/public/base-datos/create';
+            window.location.href = '/base-datos/create';
         }
     });
 }
@@ -370,7 +504,7 @@ async function asignarUser(e) {
     }
   
     try {
-      const response = await fetch(`/cf/public/asignarUser?idCuota=${e}&idUser=${seleccionado}&_token=${dataToken}`);
+      const response = await fetch(`/asignarUser?idCuota=${e}&idUser=${seleccionado}&_token=${dataToken}`);
   
       if (response.ok) {
         const data = await response.json(); // Si la respuesta es JSON

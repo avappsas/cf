@@ -35,38 +35,15 @@
                         <div class="table-responsive">
                             <table class="table table-striped table-hover">
                                 <thead class="thead2">
-                                    <tr>
-                                        {{-- <th>No</th> --}}
-                                        
-										<th>Id</th>
-										{{-- <th>No Documento</th> --}}
-										<th>Estado</th>
-										{{-- <th>Tipo Contrato</th> --}}
-										<th>Num Contrato</th>
-										{{-- <th>Objeto</th>
-										<th>Actividades</th> --}}
-										<th>Plazo</th>
-										{{--  <th>Valor Total</th>  --}}
-										<th>Cuotas</th>
-										{{--  <th>Cuotas Letras</th>  --}}
+                                    <tr> 
+										<th>Id</th> 
+										<th>Estado</th> 
+										<th>Num Contrato</th> 
+                                        <th>Fecha Inicio</th>
+										<th>Fecha Terminación</th> 
+										<th>Cuotas</th> 
 										<th>Oficina</th>
-										{{-- <th>Cdp</th>
-										<th>Fecha Cdp</th>
-										<th>Apropiacion</th>
-										<th>Interventor</th>
-										<th>Fecha Estudios</th>
-										<th>Fecha Idoneidad</th>
-										<th>Fecha Notificacion</th>
-										<th>Fecha Suscripcion</th>
-										<th>Rpc</th>
-										<th>Fecha Invitacion</th>
-										<th>Cargo Interventor</th>
-										<th>Valor Total Letras</th>
-										<th>Valor Mensual</th>
-										<th>Valor Mensual Letras</th>
-										<th>N C</th>
-										<th>Fecha Venc Cdp</th>
-										<th>Nivel</th> --}}
+				
 
                                         <th></th>
                                     </tr>
@@ -76,18 +53,46 @@
                                         <tr>
                                             
 											<td>{{ $contrato->Id }}</td>
-											<td>{{ $contrato->Estado }}</td>
+											<td>
+                                                @if ($contrato->Estado === 'Finalizado')
+                                                    <span style="color: red; font-weight: bold;">{{ $contrato->Estado }}</span>
+                                                @elseif ($contrato->Estado === 'Vigente')
+                                                    <span style="color: green; font-weight: bold;">{{ $contrato->Estado }}</span>
+                                                @elseif ($contrato->Estado === 'Documentación')
+                                                    <span style="color: black; font-weight: bold;">{{ $contrato->Estado }}</span>
+                                                @elseif ($contrato->Estado === 'Documentos Devueltos')
+                                                    <span style="color: orange; font-weight: bold;">{{ $contrato->Estado }}</span>
+                                                @elseif ($contrato->Estado === 'Firma Hoja de Vida')
+                                                    <span style="color: orange; font-weight: bold;">{{ $contrato->Estado }}</span>
+                                                @elseif ($contrato->Estado === 'Documentos Enviados')
+                                                    <span style="color: green; font-weight: bold;">{{ $contrato->Estado }}</span>
+                                                @else
+                                                    {{ $contrato->Estado }}
+                                                @endif
+                                            </td>
 											<td>{{ $contrato->Num_Contrato }}</td>
-											
-											<td>{{ date('d-m-Y', strtotime($contrato->Plazo)) }}</td>
+                                            <td>{{ \Carbon\Carbon::parse($contrato->Fecha_Suscripcion)->translatedFormat('d-F-Y') }}</td>
+											<td>{{ \Carbon\Carbon::parse($contrato->Plazo)->translatedFormat('d-F-Y') }}</td>
                                             <td>{{ $contrato->Cuotas }}</td>
-											<td>{{ $contrato->Oficina }}</td>
+											<td>{{ $contrato->N_Oficina }}</td>
 
                                             <td>
                                                 <form action="{{ route('contratos.destroy',$contrato->Id) }}" method="POST">
                                                     <a class="btn btn-sm btn-primary " href="{{ route('contratos.show',$contrato->Id) }}"><i class="fa fa-fw fa-eye"></i> Ver</a>
-                                                    <a class="btn btn-sm btn-success" onclick="btnRegistrarCuenta({{$contrato->Id}})"><i class="fa fa-fw fa-file-invoice"></i> Gestionar Cuenta</a>
-                                                    {{-- <a class="btn btn-sm btn-success" href="{{ route('contratos.edit',$contrato->Id) }}"><i class="fa fa-fw fa-file-invoice"></i> Generar Cuenta</a> --}}
+                                                @if($contrato->Estado === 'Documentación' || $contrato->Estado === 'Documentos Devueltos' || $contrato->Estado === 'Firma Hoja de Vida'  )
+                                                    <a class="btn btn-sm btn-warning"
+                                                       onclick="btnAbrirModalCarguecontrato({{ $contrato->Id }})">
+                                                       <i class="fa-solid fa-upload"></i> Subir Documentos
+                                                    </a>
+                                                @elseif($contrato->Estado === 'Vigente')
+                                                    <a class="btn btn-sm btn-success"
+                                                       onclick="btnRegistrarCuenta({{ $contrato->Id }})">
+                                                       <i class="fa fa-fw fa-file-invoice"></i> Gestionar Cuenta
+                                                    </a>
+                                                @elseif($contrato->Estado === 'Firma Secop-Contratista')
+                                                <a class="btn btn-sm btn-success" onclick="cambioEstadoContrato(1, {{ isset($contrato) ? $contrato->Id : 'null' }})" style="margin-right: 3px" id="btnAprobar">   <i class="fa-solid fa-file-circle-xmark" ></i> Ya Firme Secop</a>
+
+                                                @endif{{-- <a class="btn btn-sm btn-success" href="{{ route('contratos.edit',$contrato->Id) }}"><i class="fa fa-fw fa-file-invoice"></i> Generar Cuenta</a> --}}
                                                     @csrf
                                                     @method('DELETE')
                                                     {{-- <button type="submit" class="btn btn-danger btn-sm"><i class="fa fa-fw fa-trash"></i> Delete</button> --}}
@@ -149,8 +154,7 @@
                                         <a onclick="btnmodalRegCuota(1,)" class="btn btn-primary btn-sm float-right"  data-placement="left">
                                         <i class="fa fa-fw fa-file-contract"></i> 
                                         {{ __('Crear Nueva Cuenta') }}
-                                        </a>
-                                        {{-- {{ __('Crear Nueva Cuenta') }} --}}
+                                        </a> 
                                     </div>
                                 </div>
                                 <p></p>
@@ -220,8 +224,11 @@
                                 <div class="row">
                                     <div class="col-md-1">
                                         {{ Form::label('Cuota') }}
-                                        {{-- {{ Form::select('Cuota', array(1 => 'Cuota 1',2 => 'Cuota 2',3 => 'Cuota 3',4 => 'Cuota 4',5 => 'Cuota 5',6 => 'Cuota 6'), 0, ['class' => 'form-control' . ($errors->has('Cuota') ? ' is-invalid' : ''), 'placeholder' => '0', 'id' => 'Cuota']) }} --}}
-                                        {{ Form::number('Cuota', 0, ['class' => 'form-control' . ($errors->has('Cuota') ? ' is-invalid' : ''), 'placeholder' => '0','required', 'min' => 1, 'id' => 'Cuota','disabled']) }}
+                                         {{ Form::number('Cuota', 0, ['class' => 'form-control' . ($errors->has('Cuota') ? ' is-invalid' : ''), 'placeholder' => '0','required', 'min' => 1, 'id' => 'Cuota','disabled']) }}
+                                    </div>
+                                    <div class="col-md-1">
+                                        {{ Form::label('Mes Cuota') }}
+                                         {{ Form::text('Mes_cuota', 0, ['class' => 'form-control' . ($errors->has('Mes_cuota') ? ' is-invalid' : ''), 'placeholder' => '0','required', 'min' => 1, 'id' => 'Mes_cuota','disabled']) }}
                                     </div>
                                     <div class="col-md-2">
                                         {{ Form::label('Fecha de cuenta') }}
@@ -257,13 +264,40 @@
                                 </div>
                                 <p></p>
                                 <div class="form-group">
-                                    <div>
+                                    <div style="display: none">
                                         {!! Form::label('Actividades') !!}
                                         <div style="height:20%">
-                                            {!! Form::textarea('observacion', '',["style" => "min-width: 100%", 'id' => 'Actividades']) !!}
+                                            {!! Form::textarea('observacion', '', [
+                                                "style" => "min-width: 100%",
+                                                'id' => 'Actividades',
+                                                'disabled' => ($id_pro != 1) ? true : false,
+                                                'placeholder' => ($id_pro != 1) ? 'Debe actualizar a la versión Pro para habilitar este campo y poder generar sus formatos con inteligencia artifical.' : ''
+                                            ]) !!}
                                         </div>
                                     </div>
+                                    <div class="mt-4">
+                                        {!! Form::label('actividades_pp', 'Actividades en Primera Persona') !!}
+                                        {!! Form::textarea('actividades_pp', $contratoActividades ?? '', [
+                                            'class' => 'form-control',
+                                            'id' => 'Actividades_pp',
+                                            'rows' => 4,
+                                            'style' => 'resize: vertical; min-height: 100px; width: 100%;',
+                                            'placeholder' => 'Ej: Realicé la entrega del informe...'
+                                        ]) !!}
+                                    </div>
+                                    
+                                    <div class="mt-4">
+                                        {!! Form::label('actividades_tp', 'Actividades en Tercera Persona') !!}
+                                        {!! Form::textarea('actividades_tp', $contratoActividades ?? '', [
+                                            'class' => 'form-control',
+                                            'id' => 'Actividades_tp',
+                                            'rows' => 4,
+                                            'style' => 'resize: vertical; min-height: 100px; width: 100%;',
+                                            'placeholder' => 'Ej: Entregó el informe final...'
+                                        ]) !!}
+                                    </div>
                                     <p></p>
+
                                     <a class="btn btn-sm btn-success" onclick="btnGenerarCuenta()"><i class="fa fa-fw fa-file-invoice"></i> Guardar</a>
                                 </div>
                             </div>
@@ -330,7 +364,7 @@
                 
                 <div class="modal-footer">
                     <div class="row">
-                        <a class="btn btn-sm btn-success" onclick="btnEnvioCuenta()"><i class="fa-solid fa-paper-plane"></i>  Enviar Cuenta</a>
+                        <a class="btn btn-sm btn-success" onclick="btnEnvioCuenta()"><i class="fa-solid fa-paper-plane"></i>  Enviar </a>
                     </div>
                 </div>
             </div>
@@ -367,7 +401,7 @@
 @endsection
 
 
-@section('js')
+@section('js') 
     {{Html::script(asset('js/contrato/contratista.js'))}}
 @endsection
 

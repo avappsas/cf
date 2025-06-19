@@ -20,34 +20,38 @@ class BaseDatoController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
         $id_dp = auth()->user()->id_dp;
-        $vig = 'Vigente';
-
-        $baseDatos = DB::table('Base_Datos as b')
-        ->select('b.id', 'Tipo_Doc', 'Documento', 'Nombre', 'Celular')
-        ->distinct() // Añade distinct() aquí para seleccionar valores únicos
-        ->join('contratos as cc', 'b.Documento', '=', 'cc.No_Documento')
-        ->where('cc.Id_Dp', $id_dp)
-        ->where('cc.Estado', $vig)
-        ->simplePaginate(100);
-
-        return view('base-dato.index', compact('baseDatos'))
-            ->with('i', (request()->input('page', 1) - 1) * $baseDatos->perPage());
+        $query = $request->input('query');
+    
+        $baseDatos = collect(); // colección vacía por defecto
+    
+        if ($query) {
+            // 1) Partimos la cadena por espacios (puede haber varios espacios seguidos)
+            $terms = preg_split('/\s+/', trim($query));
+    
+            $baseDatos = DB::table('Base_Datos as b')
+                ->select('b.id', 'b.Tipo_Doc', 'b.Documento', 'b.Nombre', 'b.Celular')
+                ->leftJoin('contratos as cc', function ($join) use ($id_dp) {
+                    $join->on('b.Documento', '=', 'cc.No_Documento')
+                         ->where('cc.Id_Dp', $id_dp);
+                })
+                ->where(function($q) use ($terms) {
+                    foreach ($terms as $term) {
+                        $q->where(function($sub) use ($term) {
+                            $sub->where('b.Nombre', 'like', "%{$term}%")
+                                ->orWhere('b.Documento', 'like', "%{$term}%");
+                        });
+                    }
+                })
+                ->distinct()
+                ->paginate(50);
+        }
+    
+        return view('base-datos.index', compact('baseDatos', 'query'));
     }
-
-    public function misdatos()
-    {        
-        $cc = auth()->user()->usuario; 
-        $baseDato = BaseDato::where('Documento',$cc)->get();
-    //    print_r($baseDato);die();
-        $baseDato =  $baseDato[0];
-
-        return view('base-dato.edit', compact('baseDato'));
-
-    }
-
+    
 
     /**
      * Show the form for creating a new resource.
@@ -56,10 +60,9 @@ class BaseDatoController extends Controller
      */
     public function create()
     {
-        $baseDato = new BaseDato();
+        $baseDato = new BaseDato(); 
 
-
-        return view('base-dato.create', compact('baseDato'));
+        return view('base-datos.create', compact('baseDato'));
     }
 
     /**
@@ -69,33 +72,30 @@ class BaseDatoController extends Controller
      * @return \Illuminate\Http\Response
      */
     public function store(Request $request)
-
     {
-        $documento = $request->Documento;
-        $archivofirma = $request->file('firma');
-        // print_r($archivofirma);die();
-        // Generar un nombre de archivo único
-
-        request()->validate(BaseDato::$rules);
-        $baseDato = BaseDato::create($request->all()); 
-
-        if ($archivofirma != ''){
-        $nombreArchivo = $documento .'.' .$archivofirma->getClientOriginalExtension();
-        
-        // Guardar el archivo en storage/app/doc_cuenta
-        $rutaAlmacenamiento = 'public/Firmas';
-        $archivofirma->storeAs($rutaAlmacenamiento, $nombreArchivo);
-
-        // Obtener la URL del archivo almacenado
-        $rutaCompleta = Storage::path($rutaAlmacenamiento . '/' . $nombreArchivo);
-
-        $idbd = $baseDato->id;
-        $updateid = DB::update("update base_datos set firma = '$rutaCompleta' where id= $idbd ");
+        $request->validate(BaseDato::$rules + [
+            'firma' => 'nullable|file|mimes:jpg,png|max:2048',
+        ]);
+    
+        $baseDato = BaseDato::create($request->all());
+    
+        if ($request->hasFile('firma')) {
+            $documento = $request->Documento;
+            $archivoFirma = $request->file('firma');
+            $nombreArchivo = $documento . '_' . time() . '.' . $archivoFirma->getClientOriginalExtension();
+    
+            // Guardar en public/storage/firmas
+            $archivoFirma->storeAs('public/firmas', $nombreArchivo);
+    
+            // Guardar la ruta relativa (sin "public/"), ya que se puede acceder a ella desde la URL pública
+            $rutaAlmacenada = 'firmas/' . $nombreArchivo;
+            $baseDato->update(['firma' => $rutaAlmacenada]);
         }
-
+    
         return redirect()->route('base-datos.index')
-            ->with('success', 'BaseDato created successfully.');
+            ->with('success', 'BaseDato creado exitosamente.');
     }
+    
 
     /**
      * Display the specified resource.
@@ -107,7 +107,7 @@ class BaseDatoController extends Controller
     {
         $baseDato = BaseDato::find($id);
 
-        return view('base-dato.show', compact('baseDato'));
+        return view('base-datos.show', compact('baseDato'));
     }
 
     /**
@@ -120,7 +120,7 @@ class BaseDatoController extends Controller
     {
         $baseDato = BaseDato::find($id);
 
-        return view('base-dato.edit', compact('baseDato'));
+        return view('base-datos.edit', compact('baseDato'));
     }
 
     /**
@@ -130,16 +130,38 @@ class BaseDatoController extends Controller
      * @param  BaseDato $baseDato
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, BaseDato $baseDato)
-    {
-        request()->validate(BaseDato::$rules);
-
-        $baseDato->update($request->all());
-
-        return redirect()->route('base-datos.index')
-            ->with('success', 'BaseDato updated successfully');
-    }
-
+    
+     public function update(Request $request, BaseDato $baseDato)
+     {
+         $request->validate(BaseDato::$rules + [
+             'firma' => 'nullable|file|mimes:jpg,png|max:2048',
+         ]);
+     
+         $data = $request->all();
+     
+         if ($request->hasFile('firma')) {
+             $documento = $request->Documento ?? $baseDato->Documento;
+             $archivoFirma = $request->file('firma');
+             $nombreArchivo = $documento . '_' . time() . '.' . $archivoFirma->getClientOriginalExtension();
+     
+             // Eliminar firma anterior si existe
+             if ($baseDato->firma && Storage::exists('public/' . $baseDato->firma)) {
+                 Storage::delete('public/' . $baseDato->firma);
+             }
+     
+             // Guardar nueva firma en public/storage/firmas
+             $archivoFirma->storeAs('public/firmas', $nombreArchivo);
+             $data['firma'] = 'firmas/' . $nombreArchivo;
+         }
+     
+         $baseDato->update($data);
+     
+         return redirect()
+             ->route('base-datos.edit', $baseDato->id)
+             ->with('success', 'Registro actualizado correctamente.');
+     }
+     
+             
     /**
      * @param int $id
      * @return \Illuminate\Http\RedirectResponse
@@ -151,5 +173,33 @@ class BaseDatoController extends Controller
 
         return redirect()->route('base-datos.index')
             ->with('success', 'BaseDato deleted successfully');
+    }
+
+    public function misdatosRedirect()
+    {
+        // Número de documento del usuario autenticado
+        $documento = auth()->user()->usuario;
+    
+        // Busca el id en Base_Datos
+        $id = DB::table('Base_Datos')
+            ->where('Documento', $documento)
+            ->value('id'); // Ajusta el nombre de la PK si es distinto
+    
+        if (! $id) {
+            abort(404, 'No se encontraron tus datos para editar.');
+        }
+    
+        return redirect()->route('base-datos.edit', $id);
+    }
+
+    public function verFirma($id)
+    {
+        $registro = BaseDato::findOrFail($id);
+    
+        if (!$registro->firma || !Storage::exists($registro->firma)) {
+            abort(404);
+        }
+    
+        return response()->file(storage_path('app/' . $registro->firma));
     }
 }

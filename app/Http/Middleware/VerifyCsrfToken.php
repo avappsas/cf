@@ -19,6 +19,7 @@ class VerifyCsrfToken extends Middleware
         'listenBingo',
         'getMessages',
         'sendMessages',
-        'sendWS'
+        'sendWS',
+        'getCertificado'
     ];
 }

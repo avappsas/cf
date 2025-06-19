@@ -28,168 +28,67 @@ class CuotaController extends Controller
 
     public function bandeja(Request $request)
     {
+        $id_dp = auth()->user()->id_dp; 
         $idUser = auth()->user()->id;
-        $perfiUser = DB::select("select *
-        ,case when idPerfil in (1,3) then 'PENDIENTE ADMIN' when idPerfil in (4) then 'APROBADA' end as estadoA
-        ,case when idPerfil in (1,3) then 'PENDIENTE' when idPerfil in (4) then 'PENDIENTE ADMIN' end as estadoP
-        from UserPerfil where idUser = $idUser and idPerfil in (1,3,4)");
-        $estadoInterno = $perfiUser[0]->estadoA;
-        $estadoInternoP = $perfiUser[0]->estadoP;
-        $perfil = $perfiUser[0]->idPerfil;
-        // print_r($estadoInterno);die();
-        $estadoP = $estadoInternoP;
-        $estadoA = $estadoInterno;
+
+ 
+        $perfiUser = DB::table('UserPerfil')
+                    ->where('idUser', $idUser) ->where('idPerfil', '>', 2) ->pluck('idPerfil')  ->toArray();             // [4, 5], [3], etc.
+        $perfil = $perfiUser[0] ; 
+        $estadoP = $estadoA = null;
+ 
+            if (in_array(3, $perfiUser) || in_array(7, $perfiUser)) { // Si tiene el perfil 3 ó 7 (Cuentas / Cuentas Admin)
+                $estadoP = 'PENDIENTE CUENTA';
+                $estadoA = 'PENDIENTE ADMIN'; 
+                $oficina =  null;
+            } elseif (in_array(4, $perfiUser)) { // Si tiene el perfil 4 (Admin SAP)
+                $estadoP = 'PENDIENTE ADMIN';
+                $estadoA = 'APROBADA'; 
+                $oficina =  null;
+            } elseif (in_array(12, $perfiUser)) { // Si tiene el perfil 12 (Interventor)
+                $estadoP = 'PENDIENTE SUPERVISOR';
+                $estadoA = 'PENDIENTE';
+                $ccUser = auth()->user()->usuario;
+                $oficina = DB::table('Interventores')->where('cedula', '=', $ccUser) ->pluck('Id');
+            }
+  
         $estadoD = 'DEVUELTA';
         $estadoE = 'ENVIADO TESORERIA';
-        $id_dp = auth()->user()->id_dp;
-
-        // print_r($estadoA);die();
-        // $listaAsignacion = DB::table('users as a')->select("a.name,a.id
-        // inner join UserPerfil b
-        // on a.id = b.idUser
-        // where a.id_dp = $id_dp
-        // and b.idPerfil = 3");
+ 
         $listaAsignacion = DB::select("select a.name,a.id from users a
         inner join UserPerfil b
         on a.id = b.idUser
         where a.id_dp = $id_dp
         and b.idPerfil = 3");
-        $listaAsignacionFormateada = [];
-        foreach ($listaAsignacion as $asignacion) {
-            $listaAsignacionFormateada[$asignacion->id] = $asignacion->name;
-        }
-        // print_r($listaAsignacionFormateada);die();
 
-        $cuotas = DB::table('cuotas as c')
-        ->select(
-            'c.Id',
-            'c.Contrato',
-            'c.Cuota',
-            'c.Fecha_Acta',
-            'c.Porcentaje',
-            'c.Actividades',
-            'c.Planilla',
-            'c.Perioro_Planilla',
-            'c.Parcial',
-            'c.Mes_cobro',
-            'c.Oficina',
-            'c.Pin_planilla',
-            'c.Operador_planilla',
-            'c.Fecha_pago_planilla',
-            'c.updated_at',
-            'c.created_at',
-            'c.Estado',
-            'c.Estado_juridica',
-            'c.Observacion','c.id_user',
-            'b.Nombre',
-            'u.name as nameUser' // Campo 'name' de la tabla 'users'
-        )
-        ->join('contratos as cc', 'c.Contrato', '=', 'cc.Id')
-        ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
-        ->leftJoin('users as u', 'c.id_user', '=', 'u.id') // Unir la tabla 'users'
-        ->where('c.estado_juridica', $estadoP)->where('cc.Id_Dp', $id_dp)
+        $listaAsignacionFormateada = []; 
+        foreach ($listaAsignacion as $asignacion) { $listaAsignacionFormateada[$asignacion->id] = $asignacion->name; } 
+
+        $cuotas = DB::table('bandeja_cuentas')  //PENDIENTES
+        ->where('estado_juridica', $estadoP)->where('Id_Dp', $id_dp)
+        ->when($oficina, function ($query, $oficina) {return $query->where('Interventor', $oficina); })
         ->simplePaginate(150);
+ 
+        $cuotasA = DB::table('bandeja_cuentas') 
+        ->where('estado_juridica', $estadoA)->where('Id_Dp', $id_dp)
+        ->when($oficina, function ($query, $oficina) {return $query->where('Interventor', $oficina); }) 
+        ->whereNull('FUID')  
+        ->simplePaginate(150); 
 
-        $cuotasA = DB::table('cuotas as c')
-        ->select(
-            'c.Id',
-            'c.Contrato',
-            'c.Cuota',
-            'c.Fecha_Acta',
-            'c.Porcentaje',
-            'c.Actividades',
-            'c.Planilla',
-            'c.Perioro_Planilla',
-            'c.Parcial',
-            'c.Mes_cobro',
-            'c.Oficina',
-            'c.Pin_planilla',
-            'c.Operador_planilla',
-            'c.Fecha_pago_planilla',
-            'c.updated_at',
-            'c.created_at',
-            'c.Estado',
-            'c.Estado_juridica',
-            'c.Observacion',
-            'b.Nombre','b.documento','cc.Num_Contrato','cc.rpc','c.consecutivo',
-            'u.name as nameUser' // Campo 'name' de la tabla 'users'
-        )
-        ->join('contratos as cc', 'c.Contrato', '=', 'cc.Id')
-        ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
-        ->leftJoin('users as u', 'c.id_user', '=', 'u.id') // Unir la tabla 'users'
-        ->where('c.estado_juridica', $estadoA)->where('cc.Id_Dp', $id_dp)
-        // ->where('c.id_user',NULL)
-        ->simplePaginate(150);
-        
-
-        $cuotasD = DB::table('cuotas as c')
-        ->select(
-            'c.Id',
-            'c.Contrato',
-            'c.Cuota',
-            'c.Fecha_Acta',
-            'c.Porcentaje',
-            'c.Actividades',
-            'c.Planilla',
-            'c.Perioro_Planilla',
-            'c.Parcial',
-            'c.Mes_cobro',
-            'c.Oficina',
-            'c.Pin_planilla',
-            'c.Operador_planilla',
-            'c.Fecha_pago_planilla',
-            'c.updated_at',
-            'c.created_at',
-            'c.Estado',
-            'c.Estado_juridica',
-            'c.Observacion',
-            'b.Nombre',
-            'u.name as nameUser' // Campo 'name' de la tabla 'users'
-        )
-        ->join('contratos as cc', 'c.Contrato', '=', 'cc.Id')
-        ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
-        ->leftJoin('users as u', 'c.id_user', '=', 'u.id') // Unir la tabla 'users'
-        ->where('c.estado_juridica', $estadoD)->where('cc.Id_Dp', $id_dp)
-        ->simplePaginate(150);
-
-        // print_r($cuotasD );die();
-
-        $cuotasE = DB::table('lotes as a')->select('a.*',
-        'u.name as nameUser')
-        ->leftJoin('users as u', 'a.idUser', '=', 'u.id') // Unir la tabla 'users'
-        ->simplePaginate(50);
-        $cuotasE2 = DB::table('Cuotas as c')->select(
-            'c.Id',
-            'c.Contrato',
-            'c.Cuota',
-            'c.Fecha_Acta',
-            'c.Porcentaje',
-            'c.Actividades',
-            'c.Planilla',
-            'c.Perioro_Planilla',
-            'c.Parcial',
-            'c.Mes_cobro',
-            'c.Oficina',
-            'c.Pin_planilla',
-            'c.Operador_planilla',
-            'c.Fecha_pago_planilla',
-            'c.updated_at',
-            'c.created_at',
-            'c.Estado',
-            'c.Estado_juridica',
-            'c.Observacion',
-            'b.Nombre','b.documento','cc.Num_Contrato','cc.rpc','c.consecutivo',
-            'c.FUID',
-            'u.name as nameUser' // Campo 'name' de la tabla 'users'
-        )
-        ->join('lotes as lt', 'c.FUID', '=', 'lt.id')
-        ->join('contratos as cc', 'c.Contrato', '=', 'cc.Id')
-        ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
-        ->leftJoin('users as u', 'c.id_user', '=', 'u.id') // Unir la tabla 'users'
-        ->where('cc.Id_Dp', $id_dp)
-        ->where('c.Estado_juridica','APROBADA')
+        $cuotasD = DB::table('bandeja_cuentas')
+        ->where('estado_juridica', $estadoD)->where('Id_Dp', $id_dp)
+        ->when($oficina, function ($query, $oficina) {return $query->where('Interventor', $oficina); })
+        ->simplePaginate(150); 
+ 
+        $cuotasE = DB::table('lotes as a')
+        ->select('a.*', 'u.name as nameUser')
+        ->leftJoin('users as u', 'a.idUser', '=', 'u.id')  
+        ->orderBy('a.id', 'desc')
         ->simplePaginate(50);
 
+        $cuotasE2 = DB::table('bandeja_cuentas') 
+        ->where('Estado_juridica','APROBADA') 
+        ->simplePaginate(50); 
 
         return view('cuota.index', compact('cuotas','cuotasA','cuotasD','cuotasE','cuotasE2','perfil','listaAsignacionFormateada'))
             ->with('i', (request()->input('page', 1) - 1) * $cuotas->perPage());
@@ -287,15 +186,18 @@ class CuotaController extends Controller
         // $idContrato = $request->id;
         $idCuota = $request->idCuota;
         $idContrato = $request->idContrato;
-
-        // print_r($id);die();
+        $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('Estado');
+        $id_dp = auth()->user()->id_dp; 
+        $idUser = auth()->user()->id;
+        $perfiUser = DB::table('UserPerfil') ->where('idUser', $idUser) ->where('idPerfil', '>', 2) ->pluck('idPerfil')  ->toArray();       
+        $perfil = $perfiUser[0] ; 
         
         $datos = DB::select("SELECT f.Id
         ,ca.Ruta
         ,upper(ca.Estado) Estado
         ,ca.Observacion
-        ,CASE WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' +  FORMAT( CAST( CASE WHEN ((SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 40 / 100) < 1300000 THEN '1.300.000' 
-          ELSE ((SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 40 / 100)  END  AS MONEY), 'N0', 'es-ES')  ELSE UPPER(f.Nombre) END AS Nombre
+       ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
+        ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
         ,f.tipo
         ,$idContrato as idContrato
         ,$idCuota as idCuota,ca.Id as Id_cargue_archivo
@@ -309,67 +211,176 @@ class CuotaController extends Controller
                 inner join Cuotas c
                 on b.Id = c.Contrato
                 where b.Id = $idContrato and c.Id = $idCuota
-                and a.etapa <= case when c.Cuota = b.Cuotas then 2 else 1 end
+                and a.etapa <= (case when c.Cuota = b.Cuotas then 2 else 1 end) and a.tipo > (case when c.Cuota = 1 then -1 else 0 end)
         ) c on f.Id = c.Id
         order by f.tipo desc");
         
-        return view('tablaDocJuridica', compact('datos'));
+        return view('tablaDocJuridica', compact('datos','estadoContrato','perfil'));
     }
 
-    
+ 
     public function cambioEstadoFile(Request $request)
     {
-        
         $idArchivo = $request->idArchivo;
         $estado = $request->estado;
         $observacion = $request->observacion;
-        
-        $queryResult = DB::update("UPDATE Cargue_Archivo SET Estado = '$estado', Observacion = '$observacion' WHERE Id = $idArchivo");
-        
-        
-        
-        // $idContrato = $request->id;
+        $id_dp = auth()->user()->id_dp; 
+        $idUser = auth()->user()->id;
+        $perfiUser = DB::table('UserPerfil') ->where('idUser', $idUser) ->where('idPerfil', '>', 2) ->pluck('idPerfil')  ->toArray();       
+        $perfil = $perfiUser[0] ; 
+
+        // Actualizar estado del archivo cargado
+        DB::update("UPDATE Cargue_Archivo SET Estado = ?, Observacion = ? WHERE Id = ?", [
+            $estado, $observacion, $idArchivo
+        ]);
+    
         $idCuota = $request->idCuota;
         $idContrato = $request->idContrato;
-
-        // print_r($id);die();
-        
-        $datos = DB::select("SELECT f.Id
-        ,ca.Ruta
-        ,upper(ca.Estado) Estado
-        ,ca.Observacion
-        ,upper(f.Nombre) Nombre,f.tipo
-        ,$idContrato as idContrato
-        ,$idCuota as idCuota,ca.Id as Id_cargue_archivo
-        FROM Formatos f Left JOIN 
-        (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) =$idCuota AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
-        inner join (
-        select a.Id
-                from Formatos a
-                inner join Contratos b
-                on a.Id_Dp = b.Id_Dp
-                inner join Cuotas c
-                on b.Id = c.Contrato
-                where b.Id = $idContrato and c.Id = $idCuota
-                and a.etapa <= case when c.Cuota = b.Cuotas then 2 else 1 end
-        ) c on f.Id = c.Id
-        order by f.tipo desc");
-        
-        return view('tablaDocJuridica', compact('datos'));
-    }
-
     
+        $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('Estado');
+
+
+        // Caso especial: cuota nula o igual a 1
+        if (is_null($idCuota) || $idCuota == 1) {
+
+            $tipos = [3]; 
+            $estadoLow = strtolower($estadoContrato);        // Llevamos todo a minúsculas para comparar 
+            if ($estadoLow === 'firma hoja de vida' || $estadoLow === 'documentos aprobados'|| $estadoLow === 'hoja de vida enviada') { $tipos[] = 5; } 
+            $inLista = implode(',', $tipos);
+ 
+
+            $datos = DB::select("
+                SELECT 
+                    f.Id,
+                    ca.Ruta,
+                    UPPER(ca.Estado) AS Estado,
+                    ca.Observacion,
+                    CASE 
+                        WHEN f.Nombre = 'PLANILLA' THEN  
+                            'PLANILLA - Base: $' + FORMAT(
+                                CAST(
+                                    CASE 
+                                        WHEN ((SELECT Valor_Mensual FROM Contratos WHERE id = ?) * 0.4) < 1423500 
+                                        THEN 1423500 
+                                        ELSE ((SELECT Valor_Mensual FROM Contratos WHERE id = ?) * 0.4) 
+                                    END 
+                                AS MONEY), 'N0', 'es-ES')
+                        ELSE UPPER(f.Nombre) 
+                    END AS Nombre,
+                    f.tipo,
+                    ? AS idContrato,
+                    1 AS idCuota,
+                    ca.Id AS Id_cargue_archivo
+                FROM Formatos f
+                LEFT JOIN (
+                    SELECT * FROM Cargue_Archivo 
+                    WHERE Id_contrato = ? AND Estado != 'ANULADO'
+                ) ca ON f.Id = ca.Id_formato
+                INNER JOIN (
+                    SELECT a.Id
+                    FROM Formatos a
+                    INNER JOIN Contratos b ON a.Id_Dp = b.Id_Dp 
+                    WHERE b.Id = ? AND a.tipo IN ($inLista)
+                ) c ON f.Id = c.Id
+                ORDER BY f.tipo asc
+            ", [$idContrato, $idContrato, $idContrato, $idContrato, $idContrato, $inLista]);
+        } else {
+            // Consulta normal con cuota válida
+            $datos = DB::select("SELECT f.Id
+            ,ca.Ruta
+            ,upper(ca.Estado) Estado
+            ,ca.Observacion
+        ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
+            ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
+            ,f.tipo
+            ,$idContrato as idContrato
+            ,$idCuota as idCuota,ca.Id as Id_cargue_archivo
+            FROM Formatos f Left JOIN 
+            (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) =$idCuota AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+            inner join (
+            select a.Id
+                    from Formatos a
+                    inner join Contratos b
+                    on a.Id_Dp = b.Id_Dp
+                    inner join Cuotas c
+                    on b.Id = c.Contrato
+                    where b.Id = $idContrato and c.Id = $idCuota
+                    and a.etapa <= case when c.Cuota = b.Cuotas then 2 else 1 end
+            ) c on f.Id = c.Id
+            order by f.tipo desc");
+        }
+    
+        return view('tablaDocJuridica', compact('datos','estadoContrato','perfil'));
+    }
+    
+
     public function cambioEstadoCuenta(Request $request)
     {
-        
         $idUsuario = auth()->user()->id;
-        // print_r($idUsuario);die();
         $estado = $request->estado;
         $idCuota = $request->idCuota;
-        
-        $cambioEstado = DB::update("EXEC [sp_cambioEstado] $idCuota,2,$estado,$idUsuario;");
+        $idContrato = $request->idContrato;  
+        $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('Estado');  
+        $idestadoContrato = DB::table('contratos')->where('id', $idContrato)->value('id_estado');
+
+        if  ($idCuota == 1)  { 
+
+            // Actualizar estado en contratos basado en $estado
+            
+            if ($estado == 0) {
+
+            $estado = DB::table('Cambio_estado')->where('id', $idestadoContrato)->value('pre_estado'); 
+            $idnuevoestado = DB::table('Cambio_estado')->where('id', $estado)->first();
+ 
+            if ($idnuevoestado) {
+            DB::table('contratos')
+                ->where('id', $idContrato) 
+                    ->update(['Estado' => $idnuevoestado->EstadoUsuario,'id_estado' => $idnuevoestado->id]);
+            }
+ 
+
+            } elseif ($estado == 1) {
+
+            $estado = DB::table('Cambio_estado')->where('id', $idestadoContrato)->value('pos_estado'); 
+            $idnuevoestado = DB::table('Cambio_estado')->where('id', $estado)->first();
+ 
+                if ($idnuevoestado) {
+                DB::table('contratos')
+                    ->where('id', $idContrato) 
+                        ->update(['Estado' => $idnuevoestado->EstadoUsuario,'id_estado' => $idnuevoestado->id]);
+                }
+
+            }elseif ($estado == 2) {
+               
+            $estado = DB::table('Cambio_estado')->where('id', $idestadoContrato)->value('pos_estado'); 
+            $idnuevoestado = DB::table('Cambio_estado')->where('id', $estado)->first();
+ 
+                if ($idnuevoestado) {
+                DB::table('contratos')
+                    ->where('id', $idContrato) 
+                        ->update(['Estado' => $idnuevoestado->EstadoUsuario,'id_estado' => $idnuevoestado->id]);
+                
+                DB::table('Cargue_Archivo')
+                        ->where('Id_Contrato', $idContrato) 
+                        ->where('Id_formato', 37) 
+                        ->where('Estado', 'CARGADO') 
+                        ->update(['Estado' => 'DEVUELTA'],['Observacion' => 'Pendiente por firmar hoja de vida']);       
+                }               
+               
+ 
+            }
+ 
+        }
+
+        // Ejecutar SP si la cuota es válida
+        $cambioEstado = DB::update("EXEC [sp_cambioEstado] ?, ?, ?, ?", [
+            $idCuota, 2, $estado, $idUsuario
+        ]);
         return $cambioEstado;
     }
+
+
+
 
     
     public function enviarLote(Request $request)
@@ -382,8 +393,10 @@ class CuotaController extends Controller
         $estado = $request->estado;
         $idCuota = $request->idCuota;
         
+       
         $queryResult = DB::update("UPDATE Cuotas SET Estado = '$estado', Estado_juridica = '$estado', id_user = $idUsuario WHERE Id = $idCuota");
         
         return $queryResult;
     }
+    
 }

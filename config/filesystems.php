@@ -32,7 +32,7 @@ return [
 
         'ftp' => [
             'driver' => 'ftp',
-            'host' => 'ftp.arroyave.digital',
+            'host' => 'ftp.avapp.digital',
             'username' => 'u432201977.webApp',
             'password' => 'webApp2021*',
         ],

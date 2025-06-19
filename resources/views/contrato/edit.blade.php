@@ -15,11 +15,11 @@
                     <div class="card-header">
                         <span class="card-title">Update Contrato</span>
                         <div class="float-right">
-                            <a class="btn btn-primary" href="{{ route('contratos.index') }}"> Volver</a>
+                            {{-- <a class="btn btn-primary" href="{{ route('contratos.index') }}"> Volver</a> --}}
                         </div>
                     </div>
                     <div class="card-body">
-                        <form method="POST" action="{{ route('contratos.update', $contrato->id) }}"  role="form" enctype="multipart/form-data">
+                        <form method="POST" action="{{ route('contratos.update', $contrato->Id) }}"  role="form" enctype="multipart/form-data">
                             {{ method_field('PATCH') }}
                             @csrf
 

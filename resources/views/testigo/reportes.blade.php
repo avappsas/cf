@@ -19,7 +19,7 @@
                     
                     {{-- <div class="float-right">
                         <button type="button" class="btn" data-toggle="modal" data-target="#exampleModal" 
-                        style="color:#fff;text-align: right;border-radius: 50px; background-color: #FCD116; background-image: url('{{ asset('/images/arroyave/upload.png') }}'); background-size: 20% 80%; width: 150px; height: 40px;
+                        style="color:#fff;text-align: right;border-radius: 50px; background-color: #FCD116; background-image: url('{{ asset('/images/avapp/upload.png') }}'); background-size: 20% 80%; width: 150px; height: 40px;
                         background-position: left center;
                         background-repeat: no-repeat;background-position: 5%;"
                         > Cargar Archivo</button>

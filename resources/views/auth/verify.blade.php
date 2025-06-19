@@ -19,6 +19,12 @@
                     <form class="d-inline" method="POST" action="{{ route('verification.resend') }}">
                         @csrf
                         <button type="submit" class="btn btn-link p-0 m-0 align-baseline">{{ __('click here to request another') }}</button>.
+                          {{-- Botón para regresar al login --}}
+            <div class="text-center" style="margin-top: 20px;">
+                <a href="{{ route('login') }}" class="btn btn-primary">
+                    {{ __('Regresar al Login') }}
+                </a>
+            </div>
                     </form>
                 </div>
             </div>

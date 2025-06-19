@@ -112,5 +112,6 @@
         {{-- <div id="copyright">Copyright&copy; 2023 - Página creada por Avapp - Todos los derechos reservados</div> --}}
     </footer>
         @yield('js')
+        @stack('scripts')
 </body>
 </html>

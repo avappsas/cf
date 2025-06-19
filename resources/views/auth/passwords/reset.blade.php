@@ -55,9 +55,20 @@
                                     {{ __('Reset Password') }}
                                 </button>
                             </div>
+                            
                         </div>
+
+                        
+
                     </form>
+                    
                 </div>
+                            {{-- Botón para regresar al login --}}
+            <div class="text-center" style="margin-top: 20px;">
+                <a href="{{ route('login') }}" class="btn btn-primary">
+                    {{ __('Regresar al Login') }}
+                </a>
+             
             </div>
         </div>
     </div>

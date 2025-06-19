@@ -1,0 +1,80 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background-color: #f0f0f0;
+    font-size: 14px;
+    overflow-y: auto;
+}
+
+body {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+ 
+.pagina {
+    width: 8.5in;
+    min-height: 11in;
+    background-color: #fff;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); 
+    box-sizing: border-box;
+    margin: 20px auto;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.tabla-encabezado {
+    width: 100%;
+    border-collapse: collapse;
+    border: 2px solid #333;
+    margin: auto;
+}
+
+.tabla-encabezado td {
+    padding: 8px;
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+    font-weight: bold;
+}
+
+.tabla-custom {
+    width: 95%;
+    border-collapse: collapse;
+    border: 2px solid #333;
+    margin: auto;
+}
+
+.tabla-custom td {
+    font-family: Arial, Helvetica, sans-serif;
+    line-height: 24px;
+}
+
+.titulos {
+    background-color: #ddd;
+    padding: 8px;
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+}
+
+.cuadrolargo {
+    line-height: 7px;
+    font-family: Arial, Helvetica, sans-serif;
+    padding: 8px;
+    text-align: left;
+}
+
+.cuadromedio {
+    line-height: 7px;
+    font-family: Arial, Helvetica, sans-serif;
+    padding: 8px;
+    text-align: center;
+}
+
+.altocuadro {
+    line-height: 7px;
+    padding: 10px;
+}
