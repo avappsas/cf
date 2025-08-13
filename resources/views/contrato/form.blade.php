@@ -83,7 +83,7 @@
                                             {{ Form::label('Nivel', 'Nivel / Perfil') }}
                                             {{ Form::select('Nivel', [
                                                 'Asistencial'               => 'Asistencial',
-                                                'Tecnico'                   => 'Tecnico',
+                                                'Técnico'                   => 'Técnico',
                                                 'Profesional'               => 'Profesional',
                                                 'Profesional Especializado' => 'Especializado',
                                             ], $contrato->Nivel, [
@@ -243,7 +243,7 @@
                                     </div>
                                     <div class="col-md-4">
                                         <div class="form-group">
-                                            {{ Form::label('Fecha_Suscripcion', 'Fecha Suscripción') }}
+                                            {{ Form::label('Fecha_Suscripcion', 'Fecha de Suscripcion') }}
                                             {{ Form::date('Fecha_Suscripcion', $contrato->Fecha_Suscripcion, ['class'=>'form-control']) }}
                                         </div>
                                     </div>
@@ -253,6 +253,44 @@
                                             {{ Form::date('Fecha_Notificacion', $contrato->Fecha_Notificacion, ['class'=>'form-control']) }}
                                         </div>
                                     </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            {{ Form::label('Fecha_Inicio_Contrato', 'Fecha_Inicio_Contrato') }}
+                                            {{ Form::date('Fecha_Inicio_Contrato', $contrato->Fecha_Inicio_Contrato, ['class'=>'form-control']) }}
+                                        </div>
+                                    </div>
+                                     @if(isset($contrato)  && $contrato->Estado_interno != 'Documentación')
+                                        <div class="col-auto">
+                                            <button type="button" class="btn btn-link text-decoration-none" onclick="btnAbrirModalCarguecontrato({{ $contrato->Id }})">
+                                                <i class="fa-solid fa-upload fa-2x"></i>
+                                                <div>Ver Documentos</div>
+                                            </button>
+                                        </div>
+                                    @endif
+                                    @if(isset($contrato) && $contrato->Estado_interno == 'CDP - Aprobado' )
+                                    <div class="col-auto">
+                                            <button type="button" class="btn btn-link text-decoration-none" onclick="cambioEstadoContrato(1, {{ isset($contrato) ? $contrato->Id : 'null' }})" style="color: limegreen;">
+                                                <i class="fa-solid fa-file-circle-xmark fa-2x"></i>
+                                                <div >Notificar par firma Secop al Contratista</div>
+                                            </button>
+                                        </div>
+                                    @endif
+                                    @if(isset($contrato) && $contrato->Estado_interno == 'Firma Secop-Contratista')
+                                        <div class="col-auto">
+                                            <button type="button" class="btn btn-link text-decoration-none" onclick="cambioEstadoContrato(1, {{ isset($contrato) ? $contrato->Id : 'null' }})" style="color: red;">
+                                                <i class="fa-solid fa-file-circle-check fa-2x"></i>
+                                                <div class="small">Notificar par firma Secop a Presidencia</div>
+                                            </button>
+                                        </div>
+                                    @endif
+                                    @if(isset($contrato) && $contrato->Estado_interno == 'Firma Secop-Presidencia')
+                                        <div class="col-auto">
+                                            <button type="button" class="btn btn-link text-decoration-none" onclick="cambioEstadoContrato(1, {{ isset($contrato) ? $contrato->Id : 'null' }})" style="color: blue;">
+                                                <i class="fa-solid fa-file-circle-check fa-2x"></i>
+                                                <div class="small">Ya firmo Presidencia</div>
+                                            </button>
+                                        </div>
+                                    @endif                           
                                 </div> 
                             </div> 
                         </div>
@@ -285,7 +323,7 @@
                                 'Actividades',
                                 isset($contrato) && $contrato->Actividades
                                     ? $contrato->Actividades
-                                    : ''
+                                    : 'Brindar apoyo a las estrategias y actividades de información y comunicación del Concejo Distrital de Santiago de Cali (portal oficial, redes sociales corporativas) con el fin de promover la información oficial entre las partes interesadas.'
                             ),
                             ['class' => 'form-control', 'rows' => 8]
                         ) }}
@@ -310,30 +348,6 @@
                                     <div class="small">Guardar</div>
                                 </button>
                             </div>
-                            @if(isset($contrato) && $contrato->Estado == 'CDP - Aprobado' )
-                            <div class="col-auto">
-                                    <button type="button" class="btn btn-link text-decoration-none" onclick="cambioEstadoContrato(1, {{ isset($contrato) ? $contrato->Id : 'null' }})">
-                                        <i class="fa-solid fa-file-circle-xmark fa-2x"></i>
-                                        <div class="small">Secop-Contratista</div>
-                                    </button>
-                                </div>
-                            @endif
-                            @if(isset($contrato) && $contrato->Estado == 'Firma Secop-Contratista')
-                                <div class="col-auto">
-                                    <button type="button" class="btn btn-link text-decoration-none" onclick="cambioEstadoContrato(1, {{ isset($contrato) ? $contrato->Id : 'null' }})">
-                                        <i class="fa-solid fa-file-circle-check fa-2x"></i>
-                                        <div class="small">Secop-Presidencia</div>
-                                    </button>
-                                </div>
-                            @endif
-                            @if(isset($contrato)  && $contrato->Estado != 'Documentación')
-                                <div class="col-auto">
-                                    <button type="button" class="btn btn-link text-decoration-none" onclick="btnAbrirModalCarguecontrato({{ $contrato->Id }})">
-                                        <i class="fa-solid fa-upload fa-2x"></i>
-                                        <div class="small">Documentos</div>
-                                    </button>
-                                </div>
-                            @endif
                             <!-- Contrato A -->
                             <div class="col-auto">
                                 @php
@@ -356,7 +370,7 @@
                          <!-- Contrato A word -->
                             <div class="col-auto">
                                 <a href="javascript:void(0);"
-                                onclick="window.location.href = 'https://apicontrato.glitch.me/generarZip/{{ $contrato->Num_Contrato }}/1/0';"
+                                onclick="window.location.href = 'https://apicontrato-production.up.railway.app/generarZip/{{ $contrato->Num_Contrato }}/1/0';"
                                 class="btn btn-link text-decoration-none"
                                 id="btnDescargar_{{ $contrato->Num_Contrato }}">
                                     <i class="fa fa-file-contract fa-2x"></i>
@@ -395,29 +409,7 @@
                                 <i class="fa fa-envelope fa-2x"></i>
                                 <div class="small">Notificación PDF</div>
                             </button>
-                        </div>
-                        
-                        <!-- Notificación word -->
-                            {{-- <div class="col-auto">
-                                <button
-                                    type="button"
-                                    class="btn btn-link text-decoration-none"
-                                    onclick="
-                                        // Obtener valores de Blade
-                                        var fs  = '{{ $contrato->Fecha_Suscripcion ?? '' }}';
-                                        var fn  = '{{ $contrato->Fecha_Notificacion ?? '' }}';
-                                        var rpc = '{{ $contrato->RPC ?? '' }}';
-                                        if (!fs || !fn || !rpc) {
-                                            alert('Debe diligenciar Fecha Suscripción, Fecha Notificación y RPC antes de generar la notificación.');
-                                        } else {
-                                            window.location.href = 'https://apicontrato.glitch.me/generarZip/{{ $contrato->Num_Contrato }}/3';
-                                        }
-                                    "
-                                >
-                                    <i class="fa fa-envelope fa-2x"></i>
-                                    <div class="small">Notificación Word</div>
-                                </button>
-                            </div> --}}
+                        </div> 
                             <!-- Otro-SI -->
                             <div class="col-auto">
                                 @if($isEdit)
@@ -449,12 +441,13 @@
     <div class="modal fade" id="modalDocUploadCuota" tabindex="-1" role="dialog" aria-labelledby="mediumModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-xl" role="document" style="max-width: 70%;">
             <div class="modal-content">
+    {{-- Botón Cerrar en la parte superior derecha --}} 
                 <div class="modal-header" style="background: linear-gradient(30deg, rgba(201,251,74,1) 12%, rgba(86,140,29,1) 71%);
                                 background-repeat: no-repeat;
                                 color: white;
                                 font-family: 'Mallanna';
                                 font-size: 17px;">
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close" style="color: white">
+                    <button type="button" class="close" data-bs-dismiss="modal" aria-label="Cerrar" style="font-size: 1.5rem; color: white">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
@@ -499,12 +492,13 @@
     <div class="modal fade bd-example-modal-xl" id="modalVerDocCuota" tabindex="-1" role="dialog" aria-labelledby="mediumModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-xl" role="document">
             <div class="modal-content">
+    {{-- Botón Cerrar en la parte superior derecha --}} 
                 <div class="modal-header" style="background: linear-gradient(30deg, rgba(201,251,74,1) 12%, rgba(86,140,29,1) 71%);
                                 background-repeat: no-repeat;
                                 color: white;
                                 font-family: 'Mallanna';
                                 font-size: 17px;">
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close" style="color: white">
+                    <button type="button" class="close" data-bs-dismiss="modal" aria-label="Cerrar" style="font-size: 1.5rem; color: white">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>

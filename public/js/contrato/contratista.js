@@ -65,112 +65,7 @@ function AbrirModal(id){
 
  } 
 
-
-
-//  async function btnGenerarCuenta() {
-//     var dataToken = $('meta[name="csrf-token"]').attr('content');
-
-//     var miIdContrato   = idContrato;
-//     var cuota          = document.getElementById('Cuota');
-//     var fecActa        = document.getElementById('fecActa');
-//     var numPlantilla   = document.getElementById('numPlantilla');
-//     var pinPlantilla   = document.getElementById('pinPlantilla');
-//     var Operador       = document.getElementById('Operador');
-//     var fecPago        = document.getElementById('fecPago');
-//     var periodoPlanilla= document.getElementById('periodoPlanilla');
-//     var id_pro         = document.getElementById('id_pro');
-//     var Actividades    = document.getElementById('Actividades');
-//     Actividades.value  = Actividades.value.replace(/\n/g, '<br>');
-
-//     // Validación según el valor de cuota
-//     if (cuota.value === '1') {
-//         // Si cuota es "1", solo validamos cuota, operador y actividades
-//         if (!cuota.value || !Operador.value || !Actividades.value) {
-//             Swal.fire({
-//                 icon: 'error',
-//                 title: 'Oops...',
-//                 text: 'Debes llenar los campos Cuota, Operador y Actividades!',
-//                 footer: ''
-//             });
-//             return; // Detenemos la ejecución si falta algún campo
-//         }
-//     } else {
-//         // Si cuota != 1, validamos todos los campos
-//         if (
-//             !cuota.value || !fecActa.value || !numPlantilla.value || !pinPlantilla.value ||
-//             !Operador.value || !fecPago.value || !periodoPlanilla.value || !Actividades.value
-//         ) {
-//             Swal.fire({
-//                 icon: 'error',
-//                 title: 'Oops...',
-//                 text: 'Debes llenar todos los campos!',
-//                 footer: ''
-//             });
-//             return; // Detenemos la ejecución si falta algún campo
-//         }
-//     }
-
-//     // Si llegamos aquí, las validaciones se han cumplido
-//     Swal.fire({
-//         title: "Aplicando correcciones",
-//         text: "Corrigiendo ortografia y generando actividades en primera y tercera persona. ¡Espere por favor!",
-//         imageUrl: "https://cdn.pixabay.com/animation/2023/05/02/04/29/04-29-06-428_512.gif",
-//         imageWidth: 70,
-//         imageHeight: 70,
-//         imageAlt: "Custom image",
-//         showConfirmButton: false,
-//         didOpen: async () => {
-//             try {
-//                 // Esperar la respuesta de la llamada AJAX
-//                 const response = await $.ajax({
-//                     url: ('/registroCuota'),
-//                     type: 'POST',
-//                     data: {
-//                         _token: dataToken,
-//                         miIdContrato: miIdContrato,
-//                         cuota: cuota.value,
-//                         fecActa: fecActa.value,
-//                         Actividades: Actividades.value,
-//                         numPlantilla: numPlantilla.value,
-//                         periodoPlanilla: periodoPlanilla.value,
-//                         fecPago: fecPago.value,
-//                         pinPlantilla: pinPlantilla.value,
-//                         Operador: Operador.value,
-//                         fecPago: fecPago.value,
-//                         accion: accionEjecucion,
-//                         idCuotaPro: idCuotaPro
-//                     },
-//                 });
-                
-//                 // Limpia los campos y muestra el mensaje de éxito
-//                 cuota.value          = '';
-//                 fecActa.value        = '';
-//                 numPlantilla.value   = '';
-//                 pinPlantilla.value   = '';
-//                 Operador.value       = '';
-//                 fecPago.value        = '';
-//                 periodoPlanilla.value= '';
-//                 Actividades.value    = '';
-
-//                 Swal.fire({
-//                     text: "Datos guardados exitosamente.",
-//                     icon: "success"
-//                 });
-
-//                 $('#modalRegCuota').modal('hide');
-//                 btnRegistrarCuenta(miIdContrato);
-
-//             } catch (error) {
-//                 // Manejo de errores
-//                 console.error(error);
-//                 Swal.fire({
-//                     text: "Hubo un error al procesar la solicitud.",
-//                     icon: "error"
-//                 });
-//             }
-//         }
-//     });
-// }
+ 
 
 
 async function btnGenerarCuenta() {
@@ -447,111 +342,175 @@ function btnAbrirModalCarguecontrato(idContrato){
             $('#tablaDocs').html(data);
             // console.log(data);
             $('#modalDocUploadCuota').modal('show');
+            
         }
     });
 }
 
-function selccionarArchivo(idFormato,idContrato,idCuota){
-        // Crear un input de tipo file en memoria y hacer clic en él
-        var inputPDF = document.createElement('input');
-        inputPDF.type = 'file';
-        inputPDF.accept = '.pdf';
-        inputPDF.style.display = 'none';
-
-        inputPDF.addEventListener('change', function() {
-            // Archivo seleccionado
-            var archivoSeleccionado = this.files[0];
-
-            // Puedes mostrar el nombre del archivo seleccionado si lo deseas
-            console.log(archivoSeleccionado.name);
-
-            // Enviar el formulario con el archivo seleccionado (puedes usar AJAX si es necesario)
-            var formulario = new FormData();
-            formulario.append('archivo_pdf', archivoSeleccionado);
-            formulario.append('idFormato', idFormato);
-            formulario.append('idContrato', idContrato);
-            formulario.append('idCuota', idCuota);
-            formulario.append('_token',dataToken);
-            fetch('/uploadFile', {
-                method: 'POST',
-                body: formulario
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('La solicitud falló con el código: ' + response.status);
-                }
-                return response.text(); // Se espera HTML en este caso
-            })
-            .then(data => {
-                // Actualizar el contenido del modal con la nueva vista
-                $('#tablaDocs').html(data);
-            })
-            .catch(error => console.error('Error:', error));
+// dentro de contratista.js
+$(document).on('change', '#archivo_pdf', function () {
+    const file = this.files[0];
+    if (file && file.size > 8 * 1024 * 1024) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Archivo demasiado grande',
+            text: 'El archivo supera los 8MB permitidos. Por favor selecciona uno más liviano.',
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'Entendido'
         });
+        this.value = '';
+    }
+});
 
-        document.body.appendChild(inputPDF);
-        inputPDF.click();
-        document.body.removeChild(inputPDF);
+
+
+function selccionarArchivo(idFormato, idContrato, idCuota) {
+    const inputPDF = document.createElement('input');
+    inputPDF.type = 'file';
+    inputPDF.accept = '.pdf';
+    inputPDF.style.display = 'none';
+
+    inputPDF.addEventListener('change', function () {
+        const archivoSeleccionado = this.files[0];
+        if (!archivoSeleccionado) return;
+
+
+      // 🚫 Validación: máximo 8MB (8 * 1024 * 1024 bytes)
+            if (archivoSeleccionado.size > 8 * 1024 * 1024) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Archivo demasiado grande',
+                    text: 'El archivo supera los 8MB permitidos. Por favor selecciona uno más liviano.',
+                    confirmButtonColor: '#d33',
+                    confirmButtonText: 'Entendido'
+                });
+                return;
+            }
+
+
+
+        // Mostrar overlay de carga
+        document.getElementById('cargandoArchivoOverlay').style.display = 'flex';
+
+        const formulario = new FormData();
+        formulario.append('archivo_pdf', archivoSeleccionado);
+        formulario.append('idFormato', idFormato);
+        formulario.append('idContrato', idContrato);
+        formulario.append('idCuota', idCuota);
+        
+        formulario.append('_token', dataToken);
+
+        fetch('/uploadFile', {
+            method: 'POST',
+            body: formulario
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('La solicitud falló con el código: ' + response.status);
+            }
+            return response.text();
+        })
+        .then(data => {
+            // Ocultar overlay
+            document.getElementById('cargandoArchivoOverlay').style.display = 'none';
+
+            // Reemplazar contenido
+            $('#tablaDocs').html(data);
+        })
+        .then(data => {
+              // Ocultar overlay
+              document.getElementById('cargandoArchivoOverlay').style.display = 'none';
+
+              // Reemplazar contenido de la tabla
+              $('#tablaDocs').html(data);
+
+              // 🔁 Forzar recarga del visor PDF evitando caché
+              const embed = document.getElementById('pdfEmbed');
+              if (embed && embed.dataset.srcBase) {
+                  const nuevoEmbed = embed.cloneNode(true);
+                  const nuevaRuta = `${embed.dataset.srcBase}?t=${Date.now()}&r=${Math.random().toString(36).substring(2, 8)}`;
+                  nuevoEmbed.src = nuevaRuta;
+                  embed.parentNode.replaceChild(nuevoEmbed, embed);
+              }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('cargandoArchivoOverlay').style.display = 'none';
+            alert("Ocurrió un error al subir el archivo.");
+        });
+    });
+
+    document.body.appendChild(inputPDF);
+    inputPDF.click();
+    document.body.removeChild(inputPDF);
 }
 
-
-function AbrirPDFM2(Ruta){
-    console.log(Ruta)
-    document.getElementById('pdfEmbed').src = Ruta;
+ 
+function AbrirPDFM2(Ruta){ 
+    const rutaConCacheBuster = Ruta + '?t=' + new Date().getTime();
+    document.getElementById('pdfEmbed').src = rutaConCacheBuster;
     $('#modalVerDocCuota').modal('show'); 
 }
+ 
+function AbrirPDFM(ruta, idContrato = null, idCuota = null, nombreArchivoDescarga = null) {
+  if (idContrato) $('#idContrato').val(idContrato);
+  if (idCuota) $('#idCuota').val(idCuota);
 
- function AbrirPDFM(ruta) {
-    console.log('Cargando PDF:', ruta);
+  const timestamp = new Date().getTime();
+  const rutaConCacheBuster = ruta + '?v=' + timestamp;
 
-    // 1) Poner la ruta en el objeto y el enlace de descarga
-    document.getElementById('pdfViewer').setAttribute('data', ruta);
-    document.getElementById('pdfDownload').setAttribute('href', ruta);
+  // 1. Reemplazar el visor anterior (iframe)
+  const pdfContainer = $('#pdfViewer').parent();
+  $('#pdfViewer').remove();
 
-    // 2) Mostrar el modal
-    $('#modalVerDocCuota').modal('show');
-  }
+  const nuevoIframe = $(`
+    <iframe 
+      id="pdfViewer"
+      src="${rutaConCacheBuster}"
+      width="100%"
+      height="100%"
+      frameborder="0"
+      style="border: none;"
+    ></iframe>
+  `);
 
-// function btnEnvioCuenta(idContrato){
-//     // Obtener la referencia a la tabla
-//     var miTabla = document.getElementById('tablaDocss');
-//     var idCuota = document.getElementById('idCuota').value;
-//     var idContrato = document.getElementById('idContrato').value;
-//     console.log(miTabla)
-//     // Bandera para indicar si todos los registros están cargados
-//     var todosCargados = true;
+  pdfContainer.append(nuevoIframe);
 
-//     // Iterar sobre las filas de la tabla
-//     for (var i = 1, row; row = miTabla.rows[i]; i++) {
-//         // Asegurarse de que hay al menos tres celdas (para evitar errores si algunas filas son más cortas)
-//         if (row.cells.length >= 3) {
-//             // Obtener el valor de la segunda celda (índice 1 en base a cero)
-//             var valorCelda = row.cells[2].innerText;
+  // 2. Botón de descarga externo con nombre personalizado
+  const nombreFinal = nombreArchivoDescarga || 'documento.pdf';
 
-//             // Verificar si el valor no es "Cargado"
-//             if (valorCelda.trim().toLowerCase() !== "cargado") {
-//                 if (valorCelda.trim().toLowerCase() !== "aprobada") {
-//                     todosCargados = false;
-//                     break;  // No es necesario seguir verificando si ya encontramos uno no cargado
-//                 }
-//             }
-//         }
-//     } 
-//}
+  $('#btnDescargarPDFPersonalizado')
+    .attr('href', rutaConCacheBuster) // 🔁 Usa la versión actualizada
+    .attr('download', nombreFinal)
+    .show();
+
+  // 3. Mostrar modal
+  $('#modalVerDocCuota').modal('show');
+}
+
+
+let yaEnviando = false;
 
 function btnEnvioCuenta(idContrato) {
-    var miTabla = document.getElementById('tablaDocss');
-    var idCuota = document.getElementById('idCuota').value;
-    var idContrato = document.getElementById('idContrato').value;
+    if (yaEnviando) return;
+    yaEnviando = true;
 
-    var todosCargados = true;
-    const estadosValidos = ["cargado", "aprobada", "opcional", "(si aplica)"];
+    // Desactivar todos los botones verdes
+    document.querySelectorAll('.btn-success').forEach(btn => {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Enviando...';
+    });
 
-    for (var i = 1, row; row = miTabla.rows[i]; i++) {
+    const miTabla = document.getElementById('tablaDocss');
+    const idCuota = document.getElementById('idCuota').value;
+    const idContratoVal = document.getElementById('idContrato').value;
+
+    const estadosValidos = ["cargado", "aprobada", "opcional", "(si aplica)", "firmado"];
+    let todosCargados = true;
+
+    for (let i = 1, row; row = miTabla.rows[i]; i++) {
         if (row.cells.length >= 3) {
-            var valorCelda = row.cells[2].textContent.trim().toLowerCase();
-            console.log(`Fila ${i} - Estado: "${valorCelda}"`);
-
+            const valorCelda = row.cells[2].textContent.trim().toLowerCase();
             if (!estadosValidos.includes(valorCelda)) {
                 todosCargados = false;
                 break;
@@ -559,58 +518,96 @@ function btnEnvioCuenta(idContrato) {
         }
     }
 
-    
-    if (todosCargados) { 
-        $.ajax({
-            url: '/btnEnviarCuota',
-            type: 'get',
-            data: { _token: dataToken, idCuota: idCuota, idContrato: idContrato },
-            success: function (data) {
-                $('#tablaCuotas').html(data);
-                $('#modalDocUploadCuota').modal('hide'); 
-
-                Swal.fire({
-                    text: "Cuenta enviada exitosamente.",
-                    imageUrl: "https://crearhogares.com/wp-content/uploads/2022/03/74623-email-successfully-sent.gif",
-                    imageWidth: 200,
-                    imageHeight: 200,
-                    imageAlt: "Custom image"
-                });
-                  // Esperar 3 segundos (3000 milisegundos) antes de recargar
-                setTimeout(function () {
-                    location.reload();
-                }, 3000);
-        
-            }
-        });
-    } else {
+    if (!todosCargados) {
         Swal.fire({
             text: "Al menos un documento no está cargado.",
             icon: "error"
         });
+
+        // Reactivar todos los botones y restaurar texto
+        document.querySelectorAll('.btn-success').forEach(btn => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa fa-paper-plane"></i> Enviar';
+        });
+
+        yaEnviando = false;
+        return;
     }
+
+    // ✅ Envío AJAX
+    $.ajax({
+        url: '/btnEnviarCuota',
+        type: 'get',
+        data: { _token: dataToken, idCuota: idCuota, idContrato: idContratoVal },
+        success: function (data) {
+            $('#tablaCuotas').html(data);
+            $('#modalDocUploadCuota').modal('hide');
+
+            Swal.fire({
+                text: "Cuenta enviada exitosamente.",
+                imageUrl: "https://crearhogares.com/wp-content/uploads/2022/03/74623-email-successfully-sent.gif",
+                imageWidth: 200,
+                imageHeight: 200,
+                imageAlt: "Enviado"
+            });
+
+            setTimeout(() => {
+                location.reload();
+            }, 3000);
+        },
+        error: function () {
+            document.querySelectorAll('.btn-success').forEach(btn => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-paper-plane"></i> Enviar';
+            });
+
+            yaEnviando = false;
+
+            Swal.fire({
+                text: "Ocurrió un error al enviar la cuenta.",
+                icon: "error"
+            });
+        }
+    });
 }
 
 
  
 
-function btnAbrirModalVerDocBuzon(idContrato, nombre) {
+function btnAbrirModalVerDocBuzon(idContrato, idCuota, nombre) {
   $.ajax({
     url: '/verDocBuzon',
     type: 'GET',
     dataType: 'json',
-    data: { idContrato },
+    data: {
+      idContrato: idContrato,
+      idCuota: idCuota  
+    },
 
     success(resp) {
-      // 1) Rellenar CDP/RPC
+
+    const perfil = Number(resp.userPerfil); 
+    // Mostrar u ocultar el card completo según el perfil
+    if ([1, 4, 9].includes(perfil)) {
+        $('#cardActualizarDatos').show();
+        $('#cardCargarDoc').hide();
+    } else {
+        $('#cardActualizarDatos').hide();
+        $('#cardCargarDoc').show();
+    }
+ 
+      // 1) Rellenar CDP/RPC/nivel
+      $('#infoContrato').html(`Contrato #${idContrato} - ${nombre}`);
+
       $('#inputCdp').val(resp.cdp || '');
       $('#inputRpc').val(resp.rpc || '');
-
-      // 2) Rellenar fechas en YYYY-MM-DD
+      $('#inputNivel').val(resp.nivel?.trim()).trigger('change'); 
+      $('#inputNivel2').val(resp.nivel?.trim()).trigger('change'); 
+     // 2) Rellenar fechas en YYYY-MM-DD
       $('#inputFechaInicio').val(resp.fecha_cdp ? resp.fecha_cdp.substr(0,10) : '');
       $('#inputFechaVencimiento').val(resp.fecha_venc_cdp ? resp.fecha_venc_cdp.substr(0,10) : '');
       $('#inputFechaRpc').val(resp.fecha_rpc ? resp.fecha_rpc.substr(0,10) : '');
-      $('#inputFechaNotificacion').val(resp.fecha_venc_rpc ? resp.fecha_venc_rpc.substr(0,10) : '');
+      $('#inputFecha_Venc_RPC').val(resp.fecha_venc_rpc ? resp.fecha_venc_rpc.substr(0,10) : '');
 
       // 3) Inyectar el HTML de la tabla
       $('#tablaDocs').html(resp.html);
@@ -625,47 +622,103 @@ function btnAbrirModalVerDocBuzon(idContrato, nombre) {
 
       // 6) Mostrar u ocultar inputs y botón “Actualizar CDP”
       //    Primero ocultamos todo:
-      $('#inputCdp, #labelinputCdp, #inputFechaInicio, #labelinputFechaInicio, #inputFechaVencimiento, #labelinputFechaVencimiento')
+      $('#inputCdp, #labelinputCdp, #inputFechaInicio, #labelinputFechaInicio, #inputFechaVencimiento, #labelinputFechaVencimiento, #inputNivel, #labelinputNivel, #inputFecha_Venc_RPC, #labelinputFecha_Venc_RPC')
         .hide();
       $('#btnActualizarCdp').hide();
 
       //    Luego, si estamos en Solicitud CDP:
-      if ( String(resp.estadoContrato).toLowerCase().includes('solicitud cdp') ) {
-        $('#inputCdp, #labelinputCdp, #inputFechaInicio, #labelinputFechaInicio, #inputFechaVencimiento, #labelinputFechaVencimiento')
+      if ( String(resp.estadoContrato).toLowerCase().includes('solicitud cdp') || String(resp.estadoContrato).toLowerCase().includes('en ejecución') ) {
+        $('#inputCdp, #labelinputCdp, #inputFechaInicio, #labelinputFechaInicio, #inputFechaVencimiento, #labelinputFechaVencimiento, #inputNivel, #labelinputNivel')
           .show();
         const perfil = Number(resp.userPerfil);
-        if (perfil === 4 || perfil === 9   ) {
+        if (perfil === 4 || perfil === 9 || perfil === 1) {
           $('#btnActualizarCdp').show();
         }
       }
 
       // 7) Mostrar u ocultar inputs y botón “Actualizar RPC”
-      $('#inputRpc, #labelinputRpc, #inputFechaRpc, #labelinputFechaRpc, #inputFechaNotificacion, #labelinputFechaNotificacion')
+      $('#inputRpc, #labelinputRpc, #inputFechaRpc, #labelinputFechaRpc, #inputFecha_Venc_RPC, #labelinputFecha_Venc_RPC, #inputNivel2, #labelinputNivel2')
         .hide();
       $('#btnActualizarRpc').hide();
 
-      if ( String(resp.estadoContrato).toLowerCase().includes('rpc') ) {
-        $('#inputRpc, #labelinputRpc, #inputFechaRpc, #labelinputFechaRpc, #inputFechaNotificacion, #labelinputFechaNotificacion')
+      if ( String(resp.estadoContrato).toLowerCase().includes('rpc') || String(resp.estadoContrato).toLowerCase().includes('en ejecución') ) {
+        $('#inputRpc, #labelinputRpc, #inputFechaRpc, #labelinputFechaRpc, #inputFecha_Venc_RPC, #labelinputFecha_Venc_RPC, #inputNivel2, #labelinputNivel2')
           .show();
         const perfil = Number(resp.userPerfil);
-        if (perfil === 4 || perfil === 9  ) {
+        if (perfil === 4 || perfil === 9 || perfil === 1 ) {
           $('#btnActualizarRpc').show();
         }
       } 
-      // 8) MOSTRAR BOTONES
-      const perfil = Number(resp.userPerfil);
-      if (perfil !== 10 && perfil !== 11) {
-      $('#btnDevolver').off('click').on('click', function() {
-        cambioEstadoBuzon(0, idContrato);
-      });
-      $('#btnAprobar').off('click').on('click', function() {
-        cambioEstadoBuzon(1, idContrato);
-      });
-      } else {
-        $('#btnDevolver').hide();
-        $('#btnAprobar').hide();
-      }
+ 
+      // Buscar el primer PDF disponible con una Ruta válida
+      const primerPDF = resp.datos?.find(d => d.Ruta);
 
+        // Buscar primer documento con PDF
+        let primerPdf = null;
+        $('#tablaDocs').find('tr').each(function () {
+          const ruta = $(this).attr('onclick')?.match(/'([^']+\.pdf)'/); // extrae PDF del onclick
+          if (ruta && ruta[1]) {
+            primerPdf = ruta[1];
+            return false; // salir del loop
+          }
+        });
+
+        // Mostrar o limpiar el visor PDF
+        if (primerPdf) {
+          $('#pdfEmbed').attr('src', primerPdf).show();
+        } else {
+          $('#pdfEmbed').attr('src', '').hide();
+        }
+        // Condición para mostrar botones
+ 
+        const estado = String(resp.estadoContrato).toLowerCase();
+
+        // 1. Seleccionar solo los botones del modal abierto
+        const $modal = $('#modalDocUploadCuota');
+        const $btnAprobar = $modal.find('.btnAprobar');
+        const $btnDevolver = $modal.find('.btnDevolver');
+        const $btnAprobarActivo = $modal.find('.btnAprobar');
+        
+
+ 
+    
+        if ( (perfil !== 10 && perfil !== 11) || ((perfil === 10) && estado.includes('en ejecución')) ) {
+            if ((perfil === 10) && estado.includes('en ejecución')) {
+                // Solo mostrar botón Aprobar con cambioEstadoCuenta
+                $btnDevolver.hide();
+
+                // Reemplazar el botón Aprobar por uno nuevo
+                $btnAprobar.replaceWith(`
+                  <a class="btn btnAprobar btn-md btn-success" style="margin-right: 3px">
+                    <i class="fa-solid fa-file-circle-check"></i> Aprobar
+                  </a>
+                `);
+
+                // 🔄 Re-seleccionar el botón recién insertado
+                const $btnAprobarNuevo = $modal.find('.btnAprobar');
+                $btnAprobarNuevo.off('click').on('click', function () {
+                  cambioEstadoCuenta(1, idContrato);
+                }).show();
+
+              } else if ((perfil === 13) && estado.includes('en ejecución'))  {
+                // Comportamiento estándar con cambioEstadoBuzon
+                  $btnDevolver.hide();
+                  $btnAprobar.hide();
+
+              }else{
+                // Comportamiento estándar con cambioEstadoBuzon
+                $btnDevolver.off('click').on('click', function () {
+                  cambioEstadoBuzon(0, idContrato);
+                }).show();
+
+                $btnAprobar.off('click').on('click', function () {
+                  cambioEstadoBuzon(1, idContrato);
+                }).show();
+              }
+        } else {
+              $btnDevolver.hide();
+              $btnAprobar.hide();
+        }
       // 9) Finalmente, abrir el modal
       $('#modalDocUploadCuota').modal('show');
     },
@@ -676,97 +729,111 @@ function btnAbrirModalVerDocBuzon(idContrato, nombre) {
   });
 }
 
+  // Esto debe ejecutarse una sola vez (por ejemplo, al cargar la página)
+  $(document).on('click', '#btnActualizarCdp', function () {
+    const idContrato = $('#idContratoModal').val();
+    actualizarCDP(idContrato);
+  });
 
-function btnAbrirModalVerDocBuzonver(idContrato, nombre) {
+function btnAbrirModalVerDocBuzonver(idContrato, idCuota, nombre) {
   $.ajax({
     url: '/verDocBuzon',
     type: 'get',
-    data: { _token: dataToken, idContrato: idContrato },
+    data: {
+      _token: dataToken,
+      idContrato: idContrato,
+      idCuota: idCuota
+    },
     success: function(data) {
-      // 1) Limpia la tabla de documentos
-      $('#tablaDocs').html(data.html);
+      const $modal = $('#modalDocUploadCuotaver'); // referencia al modal correcto
+
+      // 1) Limpia tabla de documentos
+      $modal.find('#tablaDocs').html(data.html || '');
 
       // 2) Actualiza el título del modal
-      $('#nameContratista').html('<i class="fa fa-fw fa-file-contract"></i> ' + nombre);
+      $modal.find('#nameContratista').html('<i class="fa fa-fw fa-file-contract"></i> ' + nombre);
 
-      // 3) Inyecta el idContrato en un input hidden (si lo tienes en tu modal)
-      $('#idContratoModal').val(idContrato);
- 
-      // 4) Limpia y vuelve a armar el selector de rutas
-      $('#docSelect').remove();
-      $('#pdfEmbed').attr('src', '');
-      const $sel = $('<select id="docSelect" class="form-control mb-3"></select>');
-      data.docs.forEach(function(d) {
-        if (d.Ruta) {
-          $sel.append(`<option value="${d.Ruta}">${d.Nombre}</option>`);
-        }
+      // 3) Guarda el contrato actual
+      $modal.find('#idContratoModal').val(idContrato);
+
+      // 4) Elimina selector anterior si existe
+      $modal.find('#docSelect').remove();
+
+      // 5) Limpia el visor PDF
+      $modal.find('#pdfEmbed').attr('src', '');
+
+      // 6) Crear nuevo selector de documentos
+      const $sel = $('<select id="docSelect" class="form-control mb-3"><option disabled selected>📄 Selecciona un documento</option></select>');
+      const docsValidos = (data.docs || []).filter(d => d.Ruta);
+
+      docsValidos.forEach(function(d) {
+        $sel.append(`<option value="${d.Ruta}">${d.Nombre}</option>`);
       });
-      $('#pdfEmbed').before($sel);
 
-      // 5) Al cambiar la opción, carga el PDF correspondiente
+      $modal.find('#pdfEmbed').before($sel);
+
+      // 7) Al cambiar de selección, carga el PDF
       $sel.on('change', function() {
-        $('#pdfEmbed').attr('src', this.value);
+        const rutaPDF = this.value;
+        $modal.find('#pdfEmbed').attr('src', rutaPDF);
       });
 
-      // 6) Carga por defecto la primera opción, si existe
-      if (data.docs.length && data.docs[0].Ruta) {
-        $sel.val(data.docs[0].Ruta).trigger('change');
+      // 8) Carga por defecto el primero
+      if (docsValidos.length > 0) {
+        $sel.val(docsValidos[0].Ruta).trigger('change');
       }
 
-      // 7) Actualiza los botones Devolver/Aprobar para usar el idContrato correcto
-      // remueve clicks previos y asocia uno nuevo
-      $('#btnDevolver, #btnAprobar')
+      // 9) Asocia botones aprobar/devolver dentro del modal
+      $modal.find('.btnDevolver, .btnAprobar')
         .off('click')
-        .on('click', function() {
+        .on('click', function () {
           const estado = $(this).data('estado');
-          const contrato = $('#idContratoModal').val();
-          cambioEstadoBuzon(estado, contrato);
+          const contrato = $modal.find('#idContratoModal').val();
+          cambioEstadoBuzon(estado, contrato, this); // ← PASAS el botón
         });
 
-      // 8) Finalmente, muestra el modal
-      $('#modalDocUploadCuotaver').modal('show');
+      // 10) Muestra el modal
+      $modal.modal('show');
     },
     error: function() {
-      alert('❌ Error al cargar documentos.');
+      Swal.fire('Error', '❌ No se pudieron cargar los documentos.', 'error');
     }
   });
 }
 
- 
-
-
 
 function actualizarCDP(idContrato) {
+  const cdp           = $('#inputCdp').val().trim();
+  const fechaInicio   = $('#inputFechaInicio').val();
+  const fechaVenc     = $('#inputFechaVencimiento').val(); 
+  const nivel         = $('#inputNivel').val().trim();  
 
-  const cdp           = document.getElementById('inputCdp').value.trim();
-  const fechaInicio   = document.getElementById('inputFechaInicio').value;
-  const fechaVenc     = document.getElementById('inputFechaVencimiento').value;
+ 
 
-  if (!cdp || !fechaInicio || !fechaVenc) {
+  if (!cdp || !fechaInicio || !fechaVenc || !nivel) {
     return Swal.fire({
-      text: 'Por favor llena todos los campos.',
+      text: 'Por favor completa todos los campos, incluido el Nivel.',
       icon: 'error'
     });
   }
+ 
 
   $.ajax({
     url: '/contratos/actualizarCDP',
-    method: 'POST', 
+    method: 'POST',
     data: {
-    _token: dataToken,
-    idContrato: idContrato,
-    cdp: cdp,
-    fecha_cdp: fechaInicio,        // antes lo llamabas fecha_inicio
-    fecha_venc_cdp: fechaVenc     // antes lo llamabas fecha_vencimiento
+      _token: dataToken,
+      idContrato: idContrato,
+      cdp: cdp,
+      fecha_cdp: fechaInicio,
+      fecha_venc_cdp: fechaVenc,
+      nivel: nivel
     },
     success(resp) {
       Swal.fire({
         text: 'Contrato actualizado correctamente.',
         icon: 'success'
       });
-      // si quieres, recarga la tabla o página:
-      // $('#modalDocUploadCuota').modal('hide');
-      // location.reload();
     },
     error(err) {
       Swal.fire({
@@ -783,7 +850,7 @@ function actualizarRPC(idContrato) {
 
   const rpc           = document.getElementById('inputRpc').value.trim();
   const fechaInicio   = document.getElementById('inputFechaRpc').value;
-  const fechaVenc     = document.getElementById('inputFechaNotificacion').value;
+  const fechaVenc     = document.getElementById('inputFecha_Venc_RPC').value;
 
   if (!rpc || !fechaInicio || !fechaVenc) {
     return Swal.fire({
@@ -820,60 +887,75 @@ function actualizarRPC(idContrato) {
     }
   });
 }
-
-
 function cambioEstadoBuzon(estado, idContrato) {
-  // 1) Si intentas APROBAR (estado == 1), validamos en la tabla
+  const $modal = $('#modalDocUploadCuotaver');
+
+  // Referencia a ambos botones del modal
+  const $btnAprobar  = $modal.find('.btnAprobar');
+  const $btnDevolver = $modal.find('.btnDevolver');
+
+  // Botón actual según estado
+  let $btn = (estado === 0) ? $btnDevolver : $btnAprobar;
+
+  // Guardar texto original para ambos
+  const originalTextAprobar  = $btnAprobar.html();
+  const originalTextDevolver = $btnDevolver.html();
+
+  // Desactivar ambos botones
+  $btnAprobar.prop('disabled', true).addClass('disabled').html('<i class="fa fa-spinner fa-spin"></i> Procesando...');
+  $btnDevolver.prop('disabled', true).addClass('disabled').html('<i class="fa fa-spinner fa-spin"></i> Procesando...');
+
+  // Validación especial si estado = 1 (Aprobar)
   if (estado === 1) {
     let filas = document.querySelectorAll('#tablaDocs tbody tr');
     let faltan = false;
     filas.forEach(row => {
-      // asumiendo que la columna 3 es "Estado"
       const texto = row.cells[2].textContent.trim().toUpperCase();
-      // permitimos sólo "CARGADO" o cadena vacía
-      if (texto !== '' && texto !== 'CARGADO') {
+      if (texto !== '' && texto !== 'CARGADO' && texto !== 'FIRMADO') {
         faltan = true;
       }
     });
     if (faltan) {
-      return Swal.fire({
+      Swal.fire({
         icon: 'error',
         text: 'No puedes aprobar: primero debes cargar todos los archivos firmados.'
       });
+      // Revertir botones
+      $btnAprobar.prop('disabled', false).removeClass('disabled').html(originalTextAprobar);
+      $btnDevolver.prop('disabled', false).removeClass('disabled').html(originalTextDevolver);
+      return;
     }
   }
- 
+
+  // Enviar solicitud AJAX
   $.ajax({
     url: '/cambioEstadoBuzon',
     type: 'get',
-    dataType: 'json',       // para forzar JSON
+    dataType: 'json',
     data: {
       _token: dataToken,
-      estado:    estado,
+      estado: estado,
       idContrato: idContrato,
-      idCuota:   1          // ← lo que te faltaba
+      idCuota: 1
     },
     success: function(resp) {
       if (resp.success) {
-        Swal.fire({
-            text: "Estado Actualizado Correctamente.",
-            icon: "success"
-        });
-        $('#modalDocUploadCuota').modal('hide');
-        setTimeout(function () {
-            location.reload();
-        }, 2000);
+        Swal.fire({ text: "Estado actualizado correctamente.", icon: "success" });
+        $modal.modal('hide');
+        setTimeout(() => location.reload(), 2000);
       } else {
-        alert('❌ No se pudo actualizar el estado. Inténtalo de nuevo.');
+        Swal.fire('Error', '❌ No se pudo actualizar el estado.', 'error');
+        $btnAprobar.prop('disabled', false).removeClass('disabled').html(originalTextAprobar);
+        $btnDevolver.prop('disabled', false).removeClass('disabled').html(originalTextDevolver);
       }
     },
     error: function() {
-      alert('❌ Ocurrió un error en el servidor.');
+      Swal.fire('Error', '❌ Ocurrió un error en el servidor.', 'error');
+      $btnAprobar.prop('disabled', false).removeClass('disabled').html(originalTextAprobar);
+      $btnDevolver.prop('disabled', false).removeClass('disabled').html(originalTextDevolver);
     }
   });
 }
-
-
 
 $(document).ready(function () {
     $('#tabAprobadas').on('click', function () {
@@ -924,7 +1006,8 @@ function cambioEstadoContrato(estado, idContrato) {
     if (result.isConfirmed) {
       $.ajax({
      
-        url: '/cambioEstadoContrato',
+       // url: '/cambioEstadoContrato', 
+        url: '/cambioEstadoBuzon', 
         type: 'get',
         dataType: 'json',       // para forzar JSON
         data: {
@@ -954,6 +1037,289 @@ function cambioEstadoContrato(estado, idContrato) {
   });
 }
       });
+    }
+  });
+}
+
+
+
+// function cambioEstadoCuenta(estado, idContrato) {
+//   const miTabla = document.getElementById('tablaDocs');
+//   const idCuotaInput = document.getElementById('idCuota');
+
+//   if (!miTabla) {
+//     return Swal.fire({
+//       text: 'No se encontró la tabla de documentos (tablaDocs).',
+//       icon: 'error'
+//     });
+//   }
+
+//   if (!idCuotaInput) {
+//     return Swal.fire({
+//       text: 'No se encontró el campo oculto de cuota (idCuota).',
+//       icon: 'error'
+//     });
+//   }
+
+//   const idCuota = idCuotaInput.value;
+
+//   if (estado === 1) {
+//     let errorDetectado = false;
+
+//     for (let i = 1; i < miTabla.rows.length; i++) {
+//       const row = miTabla.rows[i];
+//       const estadoCell = row.cells[2]; // Tercera columna: Estado
+//       const estadoTexto = estadoCell?.textContent.trim().toLowerCase() || '';
+
+//       if (!estadoTexto || estadoTexto !== 'cargado') {
+//         // Marcar la fila con rojo claro
+//         row.style.backgroundColor = '#ffe6e6';
+//         errorDetectado = true;
+//       } else {
+//         // Limpiar color si estaba previamente marcado
+//         row.style.backgroundColor = '';
+//       }
+//     }
+
+//     if (errorDetectado) {
+//       return Swal.fire({
+//         text: 'No puedes aprobar: hay documentos sin cargar o en estado inválido.',
+//         icon: 'error'
+//       });
+//     }
+//   }
+
+//   // Si todo está bien, enviar solicitud
+//   $.ajax({
+//     url: '/cambioEstadoCuenta',
+//     type: 'GET',
+//     data: {
+//       _token: dataToken,
+//       estado,
+//       idCuota,
+//       idContrato
+//     },
+//     success(data) {
+//       let msg = 'Cuenta actualizada.', icon = 'success';
+//       if (estado === 0) msg = 'Cuenta devuelta.', icon = 'error';
+//       Swal.fire({ text: msg, icon });
+//       $('#modalDocUploadCuota').modal('hide');
+//       setTimeout(() => location.reload(), 1000);
+//     },
+//     error() {
+//       Swal.fire({
+//         text: 'Error al cambiar el estado de la cuenta.',
+//         icon: 'error'
+//       });
+//     }
+//   });
+// }
+let yaProcesandoEstado = false;
+
+function cambioEstadoCuenta(estado, idContrato) {
+  if (yaProcesandoEstado) return;
+  yaProcesandoEstado = true;
+
+  // Desactivar todos los botones de cambio de estado
+  document.querySelectorAll('.btn-warning').forEach(btn => {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Procesando...';
+  });
+
+  const miTabla = document.getElementById('tablaDocs');
+  const idCuotaInput = document.getElementById('idCuota');
+
+  if (!miTabla) {
+    resetBotonesEstado();
+    return Swal.fire({
+      text: 'No se encontró la tabla de documentos (tablaDocs).',
+      icon: 'error'
+    });
+  }
+
+  if (!idCuotaInput) {
+    resetBotonesEstado();
+    return Swal.fire({
+      text: 'No se encontró el campo oculto de cuota (idCuota).',
+      icon: 'error'
+    });
+  }
+
+  const idCuota = idCuotaInput.value;
+
+  if (estado === 1) {
+    let errorDetectado = false;
+
+    for (let i = 1; i < miTabla.rows.length; i++) {
+      const row = miTabla.rows[i];
+      const estadoCell = row.cells[2];
+      const estadoTexto = estadoCell?.textContent.trim().toLowerCase() || '';
+
+      if (!estadoTexto || estadoTexto !== 'cargado') {
+        row.style.backgroundColor = '#ffe6e6';
+        errorDetectado = true;
+      } else {
+        row.style.backgroundColor = '';
+      }
+    }
+
+    if (errorDetectado) {
+      resetBotonesEstado();
+      return Swal.fire({
+        text: 'No puedes aprobar: hay documentos sin cargar o en estado inválido.',
+        icon: 'error'
+      });
+    }
+  }
+
+  // Si todo está bien, enviar
+  $.ajax({
+    url: '/cambioEstadoCuenta',
+    type: 'GET',
+    data: {
+      _token: dataToken,
+      estado,
+      idCuota,
+      idContrato
+    },
+    success(data) {
+      let msg = 'Cuenta actualizada.', icon = 'success';
+      if (estado === 0) msg = 'Cuenta devuelta.', icon = 'error';
+      Swal.fire({ text: msg, icon });
+      $('#modalDocUploadCuota').modal('hide');
+      setTimeout(() => location.reload(), 1000);
+    },
+    error() {
+      resetBotonesEstado();
+      Swal.fire({
+        text: 'Error al cambiar el estado de la cuenta.',
+        icon: 'error'
+      });
+    }
+  });
+}
+
+function resetBotonesEstado() {
+  document.querySelectorAll('.btn-warning').forEach(btn => {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa fa-rotate-left"></i> Cambiar Estado';
+  });
+  yaProcesandoEstado = false;
+}
+ 
+    function redirigirPorDocumento(documento) {
+        if (!documento) return alert('Documento inválido');
+        window.location.href = '/base-datos/edit/por-documento/' + documento;
+    }
+ 
+
+     
+function AprobarsubidaDocumentos(idLote) {
+    let todoCorrecto = true;
+
+    // Buscar la tabla anidada correspondiente al lote
+    const tabla = $(`.tr-principal:has(td:contains(${idLote}))`).find('.tabla-anidada');
+
+    tabla.find('tr').not(':first').each(function () {
+        const $fila = $(this);
+
+        // Validar Entrada
+        const entradaInput = $fila.find('.inputEntrada');
+        let entradaValor = '';
+
+        if (entradaInput.length) {
+            entradaValor = entradaInput.val()?.trim();
+        } else {
+            entradaValor = $fila.find('td').eq(8).text().trim(); // 9na columna = Entrada
+        }
+
+        if (!entradaValor) {
+            if (entradaInput.length) {
+                entradaInput.css('border-color', 'red');
+            } else {
+                $fila.find('td').eq(8).css('background-color', '#f8d7da');
+            }
+            todoCorrecto = false;
+        } else {
+            if (entradaInput.length) {
+                entradaInput.css('border-color', '');
+            } else {
+                $fila.find('td').eq(8).css('background-color', '');
+            }
+        }
+
+        // Validar Estado (si existe columna Estado)
+        const estadoCelda = $fila.find('td').eq(9); // 10ma columna = Estado
+        if (estadoCelda.length) {
+            const estadoTexto = estadoCelda.text().trim().toUpperCase();
+            if (estadoTexto !== 'CARGADO') {
+                estadoCelda.css('background-color', '#f8d7da');
+                todoCorrecto = false;
+            } else {
+                estadoCelda.css('background-color', '');
+            }
+        }
+    });
+
+    if (!todoCorrecto) {
+        Swal.fire({
+            icon: 'error',
+            title: 'No se puede aprobar el paquete',
+            text: 'Hay campos de Entrada vacíos o con estado incorrecto.'
+        });
+        return;
+    }
+
+    aprobarLoteCuotas(idLote);
+}
+
+function aprobarLoteCuotas(idLote) {
+    fetch('/aprobarLoteCuotas', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify({ idLote })
+    })
+    .then(res => res.json())
+    .then(res => {
+        if (res.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Aprobado',
+                text: 'El paquete fue aprobado correctamente.'
+            });
+            // Opcional: recargar o actualizar visualmente
+            location.reload();
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'No se pudo aprobar el paquete.'
+            });
+        }
+    })
+    .catch(() => {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error de conexión',
+            text: 'Intenta nuevamente más tarde.'
+        });
+    });
+} 
+
+
+function verBitacoraContrato(idContrato) {
+  $.ajax({
+    url: '/bitacora/contrato/' + idContrato,
+    method: 'GET',
+    success: function (html) {
+      $('#tablaBitacoraContainer').html(html);
+      $('#modalBitacora').modal('show');
+    },
+    error: function () {
+      Swal.fire('Error', 'No se pudo cargar la bitácora', 'error');
     }
   });
 }

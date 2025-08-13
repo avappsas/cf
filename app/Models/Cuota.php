@@ -27,20 +27,17 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Cuota extends Model
 {
-    
-    static $rules = [
-		'Id' => 'required',
+    protected $table = 'Cuotas';
+    protected $primaryKey = 'Id';
+    public $incrementing = true;
+    protected $keyType = 'int';
+    public $timestamps = true;
+
+    protected $fillable = [
+        'Contrato', 'Cuota', 'Fecha_Acta', 'Porcentaje', 'Actividades',
+        'Planilla', 'Perioro_Planilla', 'Parcial', 'Mes_cobro', 'Oficina',
+        'Pin_planilla', 'Operador_planilla', 'Fecha_pago_planilla',
+        'Actividades_pp', 'Actividades_tp', 'Estado_juridica',
+        'idEstado', 'consecutivo', 'Entrada'
     ];
-
-    protected $perPage = 20;
-
-    /**
-     * Attributes that should be mass-assignable.
-     *
-     * @var array
-     */
-    protected $fillable = ['Id','Contrato','Cuota','Fecha_Acta','Porcentaje','Actividades','Planilla','Perioro_Planilla','Parcial','Mes_cobro','Oficina','Pin_planilla','Operador_planilla','Fecha_pago_planilla','Actividades_pp','Actividades_tp'];
-
-
-
 }

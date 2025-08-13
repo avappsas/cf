@@ -5,7 +5,7 @@
 @endsection
 
 @section('content')
-    <section class="content container-fluid">
+    <section class="content container-fluid" style="width: 85%; margin: 0 auto;">
             {{-- Mensaje de éxito --}}
             @if(session('success'))
                 <div class="alert alert-success">

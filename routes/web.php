@@ -10,6 +10,10 @@ use App\Http\Controllers\ContratoController;
 use App\Http\Controllers\AdministrativoController;
 use App\Http\Controllers\ConfiguracionController;  
 use App\Http\Middleware\Mixapp;
+use App\Services\WhatsAppService;
+use App\Models\User;
+use App\Notifications\EstadoNotificacion;
+
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -20,12 +24,16 @@ use App\Http\Middleware\Mixapp;
 | contains the "web" middleware group. Now create something great!
 |
 */
-
- Route::get('https://cuentafacil.co/', function () {    return view('http://cuentafacil.co/home');});
+ 
+ Route::get('https://cuentafacil.co/', function () { return view('http://cuentafacil.co/home');});
 
  Auth::routes();
 
+ Route::get('/version', function () { return app()->version(); });
+
  Route::resource('usuarios', App\Http\Controllers\UserController::class)->middleware('auth');
+
+ Route::resource('users', App\Http\Controllers\UserController::class)->middleware('auth');
 
  Route::post('update', [App\Http\Controllers\UserController::class, 'update'])->name('update');
 
@@ -53,6 +61,10 @@ use App\Http\Middleware\Mixapp;
  
  Route::get('/ver-invitacion/{id}', [App\Http\Controllers\ContratacionController::class, 'verInvitacion']);
 
+ Route::get('/ficha/{id}', [App\Http\Controllers\ContratacionController::class, 'ficha']);
+
+ Route::get('/DocEquivalente/{id}', [App\Http\Controllers\ContratacionController::class, 'DocEquivalente']);
+
  Route::post('/contratos/actualizarCDP', [App\Http\Controllers\InboxController::class, 'actualizarCDP']);
 
  Route::post('/contratos/actualizarRPC', [App\Http\Controllers\InboxController::class, 'actualizarRPC']);
@@ -75,6 +87,7 @@ Route::get('documentosContrato', [App\Http\Controllers\ContratacionController::c
 
  Route::post('uploadFile', [App\Http\Controllers\ContratoController::class, 'uploadFile'])->name('uploadFile')->middleware('auth');
   Route::post('uploadHV', [App\Http\Controllers\ContratoController::class, 'uploadHV'])->name('uploadHV')->middleware('auth');
+   Route::post('uploadFile3', [App\Http\Controllers\ContratoController::class, 'uploadFile3'])->name('uploadFile3')->middleware('auth');
 
  Route::get('btnEnviarCuota', [App\Http\Controllers\ContratoController::class, 'btnEnviarCuota'])->name('btnEnviarCuota')->middleware('auth');
 
@@ -136,4 +149,32 @@ Route::get('documentosContrato', [App\Http\Controllers\ContratacionController::c
 
  Route::get('/vale-entrada/{id}', [AdministrativoController::class, 'mostrarValeEntrada'])->name('vale.entrada.mostrar');
 
-  Route::resource('Inbox', App\Http\Controllers\InboxController::class) ->names([ 'index' => 'inbox' ]) ->middleware('auth');
+ Route::resource('Inbox', App\Http\Controllers\InboxController::class) ->names([ 'index' => 'inbox' ]) ->middleware('auth');
+
+ Route::post('/actualizar_radicado_sap', [App\Http\Controllers\CuotaController::class, 'actualizar_radicado_sap']); 
+
+ Route::get('/base-datos/edit/por-documento/{cedula}', function ($cedula) { $registro = \App\Models\BaseDato::where('Documento', $cedula)->firstOrFail(); return redirect()->route('base-datos.edit', $registro->id);})->name('base-datos.edit.documento');
+ 
+Route::get('/contratos/descargar-zip/{idContrato}/{idCuota}/{tipo}', [App\Http\Controllers\ContratacionController::class, 'descargarZip'])->name('descargar.zip.documentos') ->middleware('auth');
+
+Route::post('/actualizarEntrada', [App\Http\Controllers\AdministrativoController::class, 'actualizarEntrada'])->middleware('auth'); 
+
+Route::post('/aprobarLoteCuotas', [App\Http\Controllers\AdministrativoController::class, 'aprobarLoteCuotas'])->middleware('auth');
+
+Route::get('/contratos/{id}/historial-documentos', [App\Http\Controllers\ContratoController::class, 'historialDocumentos']); 
+
+Route::get('/bitacora/contrato/{id}', [App\Http\Controllers\InboxController::class, 'ver_bitacora']);
+ 
+Route::get('/firmar-pdf/{documento}/{pdf_id}', [App\Http\Controllers\PDFController::class, 'mostrarVista'])->name('pdf.vista.firmar');
+
+Route::post('/firmar-pdf', [App\Http\Controllers\PDFController::class, 'firmar'])->name('pdf.firmar');
+
+Route::post('/firmar-pdf-embed', [App\Http\Controllers\PDFController::class, 'firmarDesdeEmbed']); 
+
+Route::get('/firmar-viewer', function () {
+    $firma = DB::table('Base_Datos')->where('Documento', auth()->user()->usuario)->value('firma');
+    return view('viewer-firma-pdfjs', ['firma' => $firma]);
+});
+Route::post('/contratos/{id}/recordatorio', [ContratoController::class, 'reenviarRecordatorio'])
+     ->name('contratos.recordatorio');
+     

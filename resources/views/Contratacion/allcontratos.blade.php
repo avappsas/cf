@@ -85,7 +85,7 @@
                             <td>{{ $c->No_Documento }}</td>
                             <td>{{ $c->Nombre }}</td>
                             <td>
-                                                            @if  ($c->Estado === 'Vigente') 
+                                                            @if  ($c->Estado === 'En Ejecución') 
                                     <span style="color: green; font-weight: bold;">{{ $c->Estado }}</span> 
                                 @elseif ($c->Estado === 'Finalizado')
                                     <span style="color: red; font-weight: bold;">{{ $c->Estado }}</span>
@@ -113,3 +113,5 @@
     </div>
 </div>
 @endsection
+
+

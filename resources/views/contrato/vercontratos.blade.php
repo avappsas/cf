@@ -64,7 +64,7 @@
                                             <td>{{ $contrato->Modalidad }}</td>
 											<td>  @if ($contrato->Estado === 'Finalizado')
                                                 <span style="color: red; font-weight: bold;">{{ $contrato->Estado }}</span>
-                                            @elseif ($contrato->Estado === 'Vigente')
+                                            @elseif ($contrato->Estado === 'En Ejecución')
                                                 <span style="color: green; font-weight: bold;">{{ $contrato->Estado }}</span>
                                             @elseif ($contrato->Estado === 'Documentación')
                                                 <span style="color: black; font-weight: bold;">{{ $contrato->Estado }}</span>

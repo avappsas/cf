@@ -27,6 +27,7 @@
         @if($isCreate)
             {{ Form::hidden('Año', old('Año', $hoy->year)) }}
             {{ Form::hidden('Estado', old('Estado', 'Documentación')) }}
+            {{ Form::hidden('Estado_interno', old('Estado', 'Documentación')) }}
             {{ Form::hidden('Id_Dp', old('Id_Dp', auth()->user()->id_dp)) }}
             {{ Form::hidden('id_user', old('id_user', auth()->id())) }}
             {{ Form::hidden('Iva', old('Iva', 'No')) }}
@@ -49,19 +50,31 @@
                     </div>
                     <div class="card-body">
                         <div class="row"> 
-                            <div class="col-md-4">
+                            <div class="col-md-2">
                                 <div class="form-group">
                                     <label for="No_Documento">Documento</label>
                                     <input type="text" name="No_Documento" id="No_Documento" class="form-control" readonly value="{{ old('No_Documento', $contrato->No_Documento) }}" >
                                 </div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <div class="form-group">
                                     <label for="nombre">Nombre</label>
                                     <input type="text" name="nombre" id="nombre" class="form-control" readonly value="{{ old('nombre', $nombre) }}" >
                                 </div>
-                            </div>        
-                            <div class="col-md-4">
+                            </div>    
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label for="Celular">Celular</label>
+                                    <input type="text" name="Celular" id="Celular" class="form-control" value="{{ old('Celular', $celular) }}" >
+                                </div>
+                            </div>    
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label for="Correo">Correo</label>
+                                    <input type="text" name="Correo" id="Correo" class="form-control" value="{{ old('Correo', $correo) }}" >
+                                </div>
+                            </div>    
+                            <div class="col-md-3">
                                 <div class="form-group">
                                     {{ Form::label('Oficina', 'Oficina') }}
                                     {{ Form::select('Oficina', $oficinas, old('Oficina', $contrato->Oficina), [

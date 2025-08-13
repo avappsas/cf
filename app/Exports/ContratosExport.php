@@ -66,11 +66,11 @@ class ContratosExport implements FromQuery, WithHeadings, ShouldAutoSize
         }
 
         if (!empty($f['anio'])) {
-            $q->whereYear('Fecha_Inicio', $f['anio']);
+            $q->whereYear('fecha_creacion', $f['anio']);
         }
 
         if (!empty($f['mes'])) {
-            $q->whereMonth('Fecha_Inicio', $f['mes']);
+            $q->whereMonth('fecha_creacion', $f['mes']);
         }
 
         return $q->orderBy('N_C', 'desc');

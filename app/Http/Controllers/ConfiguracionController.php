@@ -18,8 +18,14 @@ class ConfiguracionController extends Controller
             ['value' => 'op3', 'label' => 'Opción C'],
         ];
 
-        return view('configuracion', compact('opciones'));
+        return view('configuracion.index', compact('opciones'));
     }
 
- 
+     public function usuarios()
+    {
+        // Obtener usuarios de la base de datos
+        $users = \App\Models\User::all();
+        return view('configuracion.usuarios', compact('users'));
+        
+    }
 }

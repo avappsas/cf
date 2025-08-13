@@ -60,7 +60,7 @@ class Contrato extends Model
      */
     protected $fillable = ['No_Documento','Estado','Tipo_Contrato','Num_Contrato','Objeto','Actividades','Plazo','Valor_Total','Cuotas','Cuotas_Letras','Oficina','CDP','Fecha_CDP','Apropiacion','Interventor'
     ,'Fecha_Estudios','Fecha_Idoneidad','Fecha_Notificacion','Fecha_Suscripcion','RPC','Fecha_Invitacion','Cargo_Interventor','Valor_Total_letras','Valor_Mensual','Valor_Mensual_Letras','N_C','Fecha_Venc_CDP','Nivel'
-    ,'Id_Dp','Valor_Cuota_1','Origen','Año','Iva','id_user','Modalidad','Obs_Contrato','id_estado'];
+    ,'Id_Dp','Valor_Cuota_1','Origen','Año','Iva','id_user','Modalidad','Obs_Contrato','id_estado','Estado_interno','Fecha_Inicio_Contrato','Fecha_Venc_RPC','Fecha_RPC'];
 
     protected $casts = [
       
@@ -72,6 +72,9 @@ class Contrato extends Model
       'Fecha_Idoneidad'       => 'date',
       'Fecha_CDP'             => 'date',
       'Fecha_Suscripcion'     => 'date',
+      'Fecha_Inicio_Contrato' => 'date',
+      'Fecha_Venc_RPC' => 'date',
+      'Fecha_RPC' => 'date',
       // etc.
   ];
   public function setValorTotalAttribute($value)
@@ -95,7 +98,11 @@ class Contrato extends Model
       return $this->belongsTo(Oficina::class, 'N_Oficina', 'Id');
   }
 
- 
+    public function getNumContratoCortoAttribute()
+    {
+        $partes = explode('.', $this->Num_Contrato);
+        return implode('.', array_slice($partes, -2));
+    }
 //   public function interventor()
 //   {
 //       // 'Interventor' es la FK en contratos, 'Id' la PK de Interventores

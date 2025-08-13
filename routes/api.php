@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WordToPdfController;
 use App\Http\Controllers\DocumentConverterController;
 use App\Http\Controllers\ContratacionController;
+use App\Http\Controllers\NotificacionesController;
 
 /*
 |--------------------------------------------------------------------------
@@ -36,3 +37,5 @@ Route::post('getCertificado', [App\Http\Controllers\ContratoController::class, '
 Route::post('contratacion/apigoogle', [ContratacionController::class, 'apigoogle']);
 Route::post('contratacion/apigoogleMultiple', [ContratacionController::class, 'apigoogleMultiple']);
 Route::get('contratacion/contrato-json', [App\Http\Controllers\ContratacionController::class, 'contratoJson'])->name('api.contrato-json');
+Route::post('/notificar/interno', [App\Http\Controllers\NotificacionesController::class, 'notificarInterno']);
+Route::post('/notificar/usuario', [App\Http\Controllers\NotificacionesController::class, 'notificarUsuario']);

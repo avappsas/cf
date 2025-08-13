@@ -140,15 +140,15 @@
                 <tr class="titulos" > <td colspan="2"><strong>1. TIPO DE INFORME</strong></td></tr>
 				<tr class="cuadrolargo" >
 					@if($datosPdf->V_Parcial == 'Parcial')
-						<td><table><tr><td colspan="1"><strong>CUOTA PARCIAL:</strong> ___X___</td></tr></table></td>
-						<td><table><tr><td colspan="1" ><strong>CUOTA FINAL:</strong> ______</td></tr></table></td>
+						<td><table><tr><td colspan="1"><strong>INFORME PARCIAL:</strong> ___X___</td></tr></table></td>
+						<td><table><tr><td colspan="1" ><strong>INFORME FINAL:</strong> ______</td></tr></table></td>
 					@endif
 					@if($datosPdf->V_Parcial == 'Final')
-						<td><table><tr><td colspan="1"><strong>CUOTA PARCIAL: </strong>______</td></tr></table></td>
-						<td><table><tr><td colspan="1" ><strong>CUOTA FINAL: </strong>___X___</td></tr></table></td>
+						<td><table><tr><td colspan="1"><strong>INFORME PARCIAL: </strong>______</td></tr></table></td>
+						<td><table><tr><td colspan="1" ><strong>INFORME FINAL: </strong>___X___</td></tr></table></td>
 					@endif
 				</tr>
-				<tr class="cuadrolargo" > <td colspan="2" style="text-align: center" ><strong>NO DE CUOTA: {{$datosPdf->V_no_cuota}} </strong>   </td></tr>
+				<tr class="cuadrolargo" > <td colspan="2" style="text-align: center" ><strong>CUOTA No: {{$datosPdf->V_no_cuota}} </strong>   </td></tr>
 				<tr class="titulos" > <td colspan="2"><strong>2. ASPECTOS GENERALES DE CONTRATO Y SU EJECUCIÓN</strong></td></tr>
 				<tr class="cuadrolargo" > <td colspan="2"><strong>Contrato No.:</strong> {{$datosPdf->V_Num_Contrato}}</td></tr>
 				<tr class="cuadrolargo" > <td colspan="2"><strong>Nombre completo del contratista:</strong> {{$datosPdf->V_nombre}}  </td></tr>

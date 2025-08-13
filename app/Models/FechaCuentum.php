@@ -30,7 +30,7 @@ class FechaCuentum extends Model
      *
      * @var array
      */
-    protected $fillable = ['id_dp','Fecha_max','fecha_cuenta'];
+    protected $fillable = ['id_dp','fecha_max','fecha_cuenta'];
 
 
 

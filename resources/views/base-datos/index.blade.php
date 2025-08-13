@@ -6,7 +6,7 @@
 @endsection
 
 @section('content')
-<div class="container-fluid">
+ <section class="content container-fluid" style="width: 85%; margin: 0 auto;">
     <div class="row">
         <div class="col-sm-12">
             <div class="card shadow-sm">

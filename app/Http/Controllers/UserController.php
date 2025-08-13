@@ -8,7 +8,6 @@ use Illuminate\Http\Request;
 use DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Session;
 
 /**
  * Class UserController
@@ -21,14 +20,41 @@ class UserController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+ 
+    public function index(Request $request)
     {
-        $users = User::where('activacion', 1)->orderBy('name', 'asc')->simplePaginate(100);
+         
 
-        return view('user.index', compact('users'))
+        $search = $request->input('search');
+    
+        $users = User::select(
+            'U.id',
+            'name',
+            'email',
+                'usuario',
+                'dependencia',
+            DB::raw("STUFF((
+                SELECT ', ' + P.PERFIL
+                FROM perfiles AS P
+                INNER JOIN UserPerfil AS UP ON P.id = UP.idPerfil
+                WHERE UP.idUser = U.id
+                ORDER BY P.PERFIL
+                FOR XML PATH(''), TYPE
+            ).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS PERFILES")
+            )
+            ->from('users as U')
+            ->when($search, function($q) use ($search) {
+                $q->where('U.usuario', 'like', "%{$search}%")
+                  ->orWhere('U.name', 'like', "%{$search}%");
+            })  
+            ->orderBy('U.id', 'asc')
+            ->simplePaginate(30);
+             
+               
+        return view('user.index', compact('users', 'search'))
             ->with('i', (request()->input('page', 1) - 1) * $users->perPage());
     }
-
+    
     /**
      * Show the form for creating a new resource.
      *
@@ -37,7 +63,22 @@ class UserController extends Controller
     public function create()
     {
         $user = new User();
-        return view('user.create', compact('user'));
+
+        $perfiles = collect();
+
+        $perfilesDisponibles = DB::table('perfiles')
+            ->orderBy('PERFIL')
+            ->pluck('PERFIL', 'id');
+
+        $perfilesUsuario = []; // No hay perfiles aún porque es un nuevo usuario
+
+        // Opcional: restringe si el usuario autenticado puede asignar perfiles
+        $puedeEditarPerfiles = DB::table('UserPerfil')
+            ->where('idUser', auth()->id())
+            ->where('idPerfil', 1) // solo si tiene perfil ID 1
+            ->exists();
+
+        return view('user.create', compact('user', 'perfiles' ,'perfilesDisponibles', 'perfilesUsuario', 'puedeEditarPerfiles'));
     }
 
     /**
@@ -46,27 +87,88 @@ class UserController extends Controller
      * @param  \Illuminate\Http\Request $request
      * @return \Illuminate\Http\Response
      */
+
     public function store(Request $request)
     {
-        request()->validate(User::$rules);
+        $request->validate([
+            'usuario'     => 'required|string|max:50|unique:users,usuario',
+            'name'        => 'required|string|max:255',
+            'email'       => 'required|email|unique:users,email',
+            'password'    => 'required|string|min:6',
+            'fotoPerfil'  => 'nullable|image|max:2048',
+        ]);
 
-        $user = User::create($request->all());
+        $user = new User();
+        $user->usuario  = $request->usuario;
+        $user->name     = $request->name;
+        $user->email    = $request->email;
+        $user->password = bcrypt($request->password);
+        $user->activacion = $request->activacion ?? 1;
+        $user->id_dp      = $request->id_dp ?? 1;
+        $user->pro        = $request->pro ?? 1;
+        $user->id_buzon   = $request->id_buzon; 
 
-        return redirect()->route('users.index')
-            ->with('success', 'User created successfully.');
+        // Foto de perfil
+        if ($request->hasFile('fotoPerfil')) {
+            $path = $request->file('fotoPerfil')->storeAs(
+                'fotoPerfil',
+                $request->usuario . '.' . $request->file('fotoPerfil')->getClientOriginalExtension(),
+                'public'
+            );
+            $user->foto = $path;
+        }
+
+        // Primero guardamos el usuario para obtener el ID
+        $user->save();
+
+        // Verificar si ya existe en Base_Datos
+        $existe = DB::table('Base_Datos')->where('Documento', $user->usuario)->exists();
+
+        if (!$existe) {
+            DB::table('Base_Datos')->insert([
+                'Documento' => $user->usuario,
+                'Nombre'    => $user->name,
+                'Correo'    => $user->email,
+            ]);
+        }
+
+        // Luego insertamos los perfiles (si se seleccionaron)
+        if ($request->has('perfiles')) {
+            foreach ($request->perfiles as $idPerfil) {
+                DB::table('UserPerfil')->insert([
+                    'idUser'   => $user->id,
+                    'idPerfil' => $idPerfil,
+                ]);
+            }
+        }
+
+        return redirect()->route('users.index')->with('success', 'Usuario creado exitosamente.');
     }
+
 
     public function ActualizarFoto(Request $request)
     {
         $idUsuario = auth()->user()->usuario;
-        print_r($request->archivo);die();
-        $path = $request->file('archivo')->store(
-            'fotoPerfil', 'public'
+        //$request->archivo->getClientOriginalExtension();
+        $image = $request->file('fotoPerfil');
+        $nombreImagen = $idUsuario .'.'.$image->getClientOriginalExtension();
+        $path = $request->file('fotoPerfil')->storeAs(
+            'fotoPerfil', $nombreImagen,'public'
         );
-        print_r($path);die();
-        $Lidere = DB::update('update Lideres set foto = ? where cedula = ?', [$path,$idUsuario]);
+
+        DB::transaction(function () use ($path, $idUsuario) {
+            // Update the Lideres table
+            DB::update('update Lideres set foto = ? where cedula = ?', [$path, $idUsuario]);
+
+            // Update the Users table
+            DB::table('users')
+                ->where('usuario', $idUsuario)
+                ->update(['foto' => $path]);
+        });
+
         return $path;
     }
+
     /**
      * Display the specified resource.
      *
@@ -89,21 +191,35 @@ class UserController extends Controller
      * @param  int $id
      * @return \Illuminate\Http\Response
      */
-    public function edit($id)
-    {
-        $user = User::find($id);
-        $cedula = $user->usuario;  
-        $consulta = DB::select("SELECT foto FROM [Lideres] where Cedula in ($cedula);"); 
-        if (empty($consulta)){
-            $foto = 'fotoPerfil/perfilDefault.png';
-        }else{
-            $foto = $consulta[0]->foto;
-        };
-        //print_r($consulta);die();
-        //print_r($foto);die();
+ public function edit($id)
+{
+    $user = User::findOrFail($id);
 
-        return view('user.edit', compact('user','foto'));
-    }
+    $foto = $user->foto ?? 'fotoPerfil/perfilDefault.png';
+
+    $perfiles = DB::table('perfiles AS P')
+        ->select('P.id', 'P.PERFIL')
+        ->join('UserPerfil AS UP', 'P.id', '=', 'UP.idPerfil')
+        ->where('UP.idUser', '=', $id)
+        ->orderBy('P.PERFIL')
+        ->get();
+
+    $puedeEditarPerfiles = DB::table('UserPerfil')
+        ->where('idUser', auth()->id())
+        ->where('idPerfil', 1)
+        ->exists();
+
+    $perfilesDisponibles = DB::table('perfiles')
+        ->orderBy('PERFIL')
+        ->pluck('PERFIL', 'id'); // [id => PERFIL]
+
+    $perfilesUsuario = $perfiles->pluck('id')->toArray();
+
+    return view('user.edit', compact(
+        'user', 'foto', 'perfiles',
+        'puedeEditarPerfiles', 'perfilesDisponibles', 'perfilesUsuario'
+    ));
+}
 
     /**
      * Update the specified resource in storage.
@@ -112,60 +228,85 @@ class UserController extends Controller
      * @param  Users $user
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, User $user)
-    {
-        if (empty($request->file('archivo'))){
-            $idUsuario = auth()->user()->usuario;
-        }else{
-            
-            $idUsuario = auth()->user()->usuario;
-            $path = $request->file('archivo')->store(
-                'fotoPerfil', 'public'
-            );
-            $Lidere = DB::update('update Lideres set foto = ? where cedula = ?', [$path,$idUsuario]);
+
+
+public function update(Request $request, $id)
+{
+    // 1. Validar campos
+    $request->validate([
+        'name'        => 'required|string|max:255',
+        'email'       => 'required|email',
+        'password'    => 'nullable|string|min:6',
+        'fotoPerfil'  => 'nullable|image|max:2048',
+        'perfiles'    => 'nullable|array', // si no hay perfiles no pasa nada
+    ]);
+
+    // 2. Buscar usuario
+    $user = User::findOrFail($id);
+
+    // 3. Iniciar transacción para asegurar integridad de los datos
+    DB::transaction(function() use ($request, $user) {
+        // 3.1. Guardar la foto si se subió
+        if ($request->hasFile('fotoPerfil')) {
+            $file = $request->file('fotoPerfil');
+            $filename = $user->usuario . '.' . $file->getClientOriginalExtension();
+            $destinationPath = public_path('storage/fotoPerfil');
+            $file->move($destinationPath, $filename);
+            $path = 'fotoPerfil/' . $filename;
+
+            // Actualizar foto en tabla users
+            DB::table('users')
+                ->where('usuario', $user->usuario)
+                ->update(['foto' => $path]);
+
+            $user->foto = $path;
         }
-        //print_r($path);die();
-        request()->validate(User::$rules);
-        $id = $request->usuario;
-        $password = $request->password;
-        if ($password == '') {
-            $password =auth()->user()->password;  
-        }else{
-            $password = bcrypt($request->password);
+
+        // 3.2. Actualizar campos básicos
+        $user->name = $request->name;
+        $user->email = $request->email;
+
+        // 3.3. Si se cambió la contraseña
+        if ($request->filled('password')) {
+            $user->password = bcrypt($request->password);
         }
-        $user = User::where('usuario', $id)->update(array('name' => $request->name,'email' => $request->email,'password' => $password));
-        
-        //return redirect($url);
-        return redirect()->route('home')
-            ->with('success', 'Datos actualizados correctamente');
-    }
+
+        // 3.4. Guardar cambios
+        $user->save();
+
+        // 3.5. Actualizar perfiles si fueron enviados
+        if ($request->has('perfiles')) {
+            DB::table('UserPerfil')->where('idUser', $user->id)->delete();
+
+            foreach ($request->perfiles as $idPerfil) {
+                DB::table('UserPerfil')->insert([
+                    'idUser'   => $user->id,
+                    'idPerfil' => $idPerfil,
+                ]);
+            }
+        }
+    });
+
+    // 4. Redirigir con éxito
+    return redirect()->route('usuarios.edit', $user->id)
+                     ->with('success', 'Datos actualizados correctamente');
+}
+
 
     /**
      * @param int $id
      * @return \Illuminate\Http\RedirectResponse
      * @throws \Exception
      */
+
     public function destroy($id)
     {
+        $usuario = User::where('id', $id)->value('usuario');
         //$user = User::find($id)->delete();
-        $user = User::where('usuario', $id)->update(array('activacion' => 2,'password' => bcrypt($id)));
+        $user = User::where('id', $id)->update(array('activacion' => 2,'password' => bcrypt($usuario)));
 
         return redirect()->back()
             ->with('Completo', 'El usuario fue activado correctamente!');
-    }
-
-    /**
-     * @param int $id
-     * @return \Illuminate\Http\RedirectResponse
-     * @throws \Exception
-     */
-    public function perform()
-    {
-        Session::flush();
-        
-        Auth::logout();
-
-        return redirect('login');
     }
 
     public function cerrarSeccion(){
@@ -173,4 +314,16 @@ class UserController extends Controller
         return redirect('home');
     }
 
+    public function login(Request $request)
+    {
+        $credentials = $request->only('email', 'password');
+
+        if (Auth::attempt($credentials)) {
+            $user = Auth::user();
+            $token = $user->createToken('AuthToken')->accessToken;
+            return response()->json(['token' => $token], 200);
+        } else {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+    }
 }

@@ -20,6 +20,7 @@ class VerifyCsrfToken extends Middleware
         'getMessages',
         'sendMessages',
         'sendWS',
-        'getCertificado'
+        'getCertificado',
+        '/firmar-pdf-embed'
     ];
 }

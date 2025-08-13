@@ -29,6 +29,9 @@ use Carbon\Carbon; // Asegúrate de importar Carbon
 use App\Mail\Notificacion;
 use Illuminate\Support\Facades\Mail; 
 use App\Exports\ContratosExport;   // ← Asegúrate de esta línea
+use App\Models\User; // Asegúrate de tener esto arriba
+use App\Models\Bitacora; 
+use App\Models\RecordatorioEnviado;
 
 /**
  * Class ContratoController
@@ -51,7 +54,10 @@ class ContratoController extends Controller
             ->where('fecha_max', '>=', Carbon::now()->format('Y-m-d'))
             ->value('fecha_cuenta');
         
-        $fecha_formateada = $fecha_c ? Carbon::parse($fecha_c)->format('j-M-Y') : null;
+            setlocale(LC_TIME, 'es_ES.UTF-8'); // para funciones nativas (no siempre necesario)
+            Carbon::setLocale('es'); // para Carbon
+
+        $fecha_formateada = $fecha_c ? Carbon::parse($fecha_c)->translatedFormat('j-M-Y') : null;
  
  
         if ($fecha_c) {
@@ -73,7 +79,7 @@ class ContratoController extends Controller
         
         $contratoActividades = DB::table('contratos as c')
         ->where('c.No_Documento', $idusuario)
-        ->where('c.Estado', 'Vigente')
+        ->where('c.Estado', 'En Ejecución')
         ->orderByDesc('c.id') // o 'c.Id' si tu campo es con mayúscula
         ->value('c.Actividades');
         
@@ -196,13 +202,17 @@ class ContratoController extends Controller
             $contrato = new Contrato();
             $contrato->No_Documento = $documento;
         
-            // 3) Buscar el nombre en Base_Datos (solo nombre ahora)
-            $nombre = $documento
+            $registro = $documento
                 ? DB::table('Base_Datos')
                     ->where('Documento', $documento)
-                    ->value('Nombre')
+                    ->select('Nombre', 'Celular','Correo')
+                    ->first()
                 : null;
-        
+
+            $nombre = $registro->Nombre ?? null;
+            $celular = $registro->Celular ?? null;
+            $correo = $registro->Correo ?? null;
+ 
             // 4) Obtener id_dp desde el usuario autenticado
             $id_dp = auth()->user()->id_dp; 
 
@@ -210,9 +220,9 @@ class ContratoController extends Controller
  
             // 5) Cargar selects filtrados por id_dp
             $oficinas = DB::table('Oficinas') ->where('estado', 1) ->where('id_dp', $id_dp) ->pluck('Oficina', 'Id'); 
-        
+ 
             // 6) Enviar datos a la vista
-            return view('contrato.inicio', compact('contrato','nombre','oficinas','inicio_estado'));
+            return view('contrato.inicio', compact('contrato','nombre','celular','correo','oficinas','inicio_estado'));
 
         }
 
@@ -272,16 +282,96 @@ class ContratoController extends Controller
      * @param  \Illuminate\Http\Request $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
-    {
-        request()->validate(Contrato::$rules);
 
-        $contrato = Contrato::create($request->all()); 
+   public function store(Request $request)
+{
+    // 1. Validar el contrato
+    $request->validate(Contrato::$rules);
 
-        return redirect()->route('contratos.all')
-            ->with('success', 'Contrato created successfully.');
+    // 2. Obtener datos del formulario
+    $documento = $request->input('No_Documento');
+    $nombre = $request->input('nombre');
+    $celular = $request->input('Celular');
+    $correo = $request->input('Correo');
+    $id_dp = auth()->user()->id_dp;
+
+    // 3. Actualizar Celular y Correo en Base_Datos si ya existe el registro
+    DB::table('Base_Datos')
+        ->where('Documento', $documento)
+        ->update([
+            'Celular' => $celular,
+            'Correo' => $correo
+        ]);
+
+    // 4. Verificar si ya existe un usuario con ese documento
+    $usuario = User::where('usuario', $documento)->first();
+
+    // 5. Si no existe, crearlo
+    if (!$usuario && !empty($nombre)) {
+        $email = !empty($correo) ? $correo : '+' . $documento . '@cuentafacil.co';
+
+        $usuario = User::create([
+            'name'       => $nombre,
+            'usuario'    => $documento,
+            'celular'    => $celular,
+            'id_dp'      => $id_dp,
+            'email'      => $email,
+            'activacion' => 1,
+            'password'   => bcrypt($documento)
+        ]);
+
+        $existePerfil = DB::table('UserPerfil')
+            ->where('idUser', $usuario->id)
+            ->where('idPerfil', 2)
+            ->exists();
+
+        if (!$existePerfil) {
+            DB::insert("INSERT INTO UserPerfil (idUser, idPerfil) VALUES (?, ?)", [$usuario->id, 2]);
+        }
     }
 
+    // 6. Crear el contrato
+    $contrato = Contrato::create($request->all());
+
+    // ✅ 7. Registrar bitácora con idContrato
+    \App\Models\Bitacora::create([
+        'id_usuario'     => auth()->id(),
+        'nombre_usuario' => auth()->user()->name ?? 'Desconocido',
+        'accion'         => 'Creó contrato',
+        'modulo'         => 'Contratos',
+        'detalles'       => "Contrato creado con ID {$contrato->Id}",
+        'idContrato'     => $contrato->Id,
+        'Estado_interno' => $contrato->Estado_interno,
+        'idCuota'        => 1,
+        'id_dp'          => $id_dp,
+        'fecha'          => now(),
+        'ip'             => $request->ip(),
+        'user_agent'     => $request->userAgent(),
+        'ruta'           => $request->path(),
+        'metodo'         => $request->method(),
+    ]);
+
+    // 8. Enviar notificación al contratista
+    try {
+        $estadoArray = [
+            'EstadoUsuario'   => 'Habilitado para subir la documentación, Ingresa al siguiente enlace. Usa tu número de documento como usuario y contraseña si es tu primer ingreso. 🔒 Recuerda cambiarla por seguridad.',
+            'EstadoInterno'   => null,
+            'notificarInterno'=> 0
+        ];
+
+        $response = Http::post(url('/api/notificar/usuario'), [
+            'idContrato'           => $contrato->Id,
+            'idCuota'              => 1,
+            'documentoContratista' => $documento,
+            'estadoActual'         => $estadoArray,
+        ]);
+    } catch (\Exception $e) {
+        Log::error("Error notificando al usuario {$documento}: " . $e->getMessage());
+    }
+
+    return redirect()->to("vercontratos/{$documento}")
+        ->with('success', 'Contrato creado exitosamente.');
+}
     /**
      * Display the specified resource.
      *
@@ -294,12 +384,74 @@ class ContratoController extends Controller
 
     //     return view('contrato.show', compact('contrato'));
     // }
+
+
     public function show(Contrato $contrato)
-    {
- 
     
-        return view('contrato.show', compact('contrato'));
+    {
+        $id_dp = auth()->user()->id_dp;   
+        $idUser = auth()->user()->id;
+        $perfiUser = DB::table('UserPerfil')
+                ->where('idUser', $idUser)
+                ->max('idPerfil');    
+    
+        return view('contrato.show', compact('contrato','perfiUser'));
+
     }
+
+ 
+public function reenviarRecordatorio(Request $request, $id)
+{
+    $contrato = Contrato::findOrFail($id);
+    $documento = $contrato->No_Documento;
+
+    // Obtener nombre desde Base_Datos o usar el del contrato como respaldo
+    $nombre = DB::table('Base_Datos')
+        ->where('Documento', $documento)
+        ->value('Nombre') ?? $contrato->Nombre;
+
+    // Verificar si ya se envió un recordatorio en las últimas 24 horas
+    $yaEnviado = DB::table('recordatorios_enviados')
+        ->where('documento', $documento)
+        ->where('id_contrato', $id)
+        ->where('enviado_en', '>=', now()->subHours(24))
+        ->exists();
+
+    if ($yaEnviado) {
+        return back()->with('error', "📢 Ya se envió un recordatorio hoy a *{$nombre}*. 
+        Intenta nuevamente mañana si aún no ha completado el proceso.");
+    }
+
+    try {
+        $estadoArray = [
+            'EstadoUsuario'    => '✅ Has sido habilitado para subir la documentación para tu contrato, Ingresa al siguiente enlace. Usa tu número de documento como usuario y contraseña si es tu primer ingreso. 🔒 Recuerda cambiarla por seguridad.',
+            'EstadoInterno'    => null,
+            'notificarInterno' => 0
+        ];
+
+        Http::post(url('/api/notificar/usuario'), [
+            'idContrato'           => $contrato->Id,
+            'idCuota'              => 1,
+            'documentoContratista' => $documento,
+            'estadoActual'         => $estadoArray,
+        ]);
+
+        DB::table('recordatorios_enviados')->insert([
+            'id_contrato' => $id,
+            'documento'   => $documento,
+            'enviado_en'  => now(),
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+
+        return back()->with('success', "✅ Recordatorio enviado exitosamente a {$nombre} ({$documento}).");
+    } catch (\Exception $e) {
+        Log::error("Error reenviando recordatorio a {$documento}: " . $e->getMessage());
+        return back()->with('error', "❌ Error al enviar recordatorio a {$nombre}.");
+    }
+}
+
+
     /**
      * Show the form for editing the specified resource.
      *
@@ -648,9 +800,11 @@ public function gpdf(Request $request)
             $registrar = $cuota->save();
             // print_r($registrar);die();
             // Obtener el ID de la cuota después de guardar o actualizar  Actividades_pp
-            $idCuota = $cuota->id;
+      
+            $idCuota = $cuota->Id; // ✅ Este sí estará disponible correctamente
             
             $cambioEstado = DB::update("EXEC [sp_cambioEstado] $idCuota,1,1,$idUser;");
+
         } elseif ($Accion == 2) {
             
             $contrato = Contrato::find($miIdContrato);
@@ -669,7 +823,24 @@ public function gpdf(Request $request)
         return $idCuota;
     }
 
-        
+    public function historialDocumentos($idContrato)
+    {
+        $historial = DB::table('Cargue_Archivo as c')
+            ->join('formatos as f', 'f.id', '=', 'c.Id_formato')
+            ->select('c.Id', 'c.Id_formato', 'f.Nombre', 'c.Estado', 'c.Observacion', 'c.Fecha_creacion', 'c.Fecha_actualizacion')
+            ->where('c.Id_contrato', $idContrato)
+            ->where(function ($q) {
+                $q->whereIn('c.Estado', ['APROBADA', 'CARGADO','DEVUELTA'])
+                ->orWhere(function ($q2) {
+                    $q2->where('c.Estado', 'ANULADO')
+                        ->whereNotNull('c.Observacion');
+                });
+            })
+            ->orderBy('c.Id_formato', 'asc')
+            ->get();
+
+        return view('contrato.historial-documentos', compact('historial'));
+    }   
 
 
     public function tablaCuotas(Request $request)
@@ -692,7 +863,7 @@ public function gpdf(Request $request)
         inner join Cuotas c
         on b.Id = c.Contrato
         where b.Id = $id
-        and a.etapa <= (case when c.Cuota = b.Cuotas then 2 else 1 end) and a.etapa > 0
+        and a.ver_formato <= (case when c.Cuota = b.Cuotas then 2 else 1 end) and a.tipo >= (case when c.Cuota=1 then 0 else 1 end)
 		order by c.Cuota,a.Id");
         // Convertir los datos a formato JSON
         $datosJson = json_encode($datos);   
@@ -722,22 +893,19 @@ public function gpdf(Request $request)
         ,f.tipo
         ,$idContrato as idContrato
         ,$idCuota as idCuota
+        ,orden
         FROM Formatos f Left JOIN 
-        (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) =$idCuota AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
-        inner join (
-        select a.Id
+        (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) IN (1,$idCuota) AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+        inner join ( 
+        select a.Id 
                 from Formatos a
-                inner join Contratos b
-                on a.Id_Dp = b.Id_Dp
-                inner join Cuotas c
-                on b.Id = c.Contrato
+                inner join Contratos b on a.Id_Dp = b.Id_Dp
+                inner join Cuotas c on b.Id = c.Contrato
                 where b.Id = $idContrato and c.Id = $idCuota
-                and a.etapa <= (case when c.Cuota = b.Cuotas then 2 else 1 end) and a.tipo > (case when c.Cuota = 1 then -1 else 0 end)
+                and a.etapa <= (case when c.Cuota = b.Cuotas then 2 else 1 end)  
+                and a.tipo_cuota >= (case when c.Cuota = 1 then -1 else 0 end) 
         ) c on f.Id = c.Id
-        order by f.tipo desc");
-        // Convertir los datos a formato JSON
-        // $datosJson = json_encode($datos);   
-        // print_r($datos);die();
+        order by orden ASC"); 
         
         return view('tablaCargueDoc', compact('datos'));
     }
@@ -747,13 +915,14 @@ public function gpdf(Request $request)
     {
          
         $idContrato = $request->idContrato;
-        $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('Estado'); 
+        $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('Estado_interno'); 
     
         $tipos = [3]; 
         $estadoLow = strtolower($estadoContrato);        // Llevamos todo a minúsculas para comparar 
         if ($estadoLow === 'firma hoja de vida' || $estadoLow === 'documentos aprobados') { $tipos[] = 5; } 
-        $inLista = implode(',', $tipos);
+        $inLista = implode(',', $tipos); 
 
+        
         $datos = DB::select("SELECT f.Id
         ,ca.Ruta
         ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
@@ -776,6 +945,10 @@ public function gpdf(Request $request)
     }
 
 
+
+
+
+
     public function uploadFile(Request $request)
     {
         
@@ -785,13 +958,18 @@ public function gpdf(Request $request)
         $idFormato = $request->idFormato;
         $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('Estado');  
         $idestadoContrato = DB::table('contratos')->where('id', $idContrato)->value('id_estado'); 
-        // print_r($idCuota);die();
+        $idUser = auth()->user()->id;
+        $perfil = DB::table('UserPerfil') ->where('idUser', $idUser) ->where('idPerfil', '!=', 2)->where('idPerfil', '!=', 1) ->orderBy('idPerfil', 'asc') ->pluck('idPerfil') ->toArray();
+        $perfiUser = $perfil[0] ?? null; 
         
         // $datos = DB::select("");
+        if (!$request->hasFile('archivo_pdf')) {
+            return back()->with('error', 'El archivo es demasiado grande. Máximo permitido: 2MB');
+        }
 
         // Validar y procesar el archivo PDF
         $request->validate([
-            'archivo_pdf' => 'required|mimes:pdf|max:2048', // PDF y tamaño máximo 2MB
+            'archivo_pdf' => 'required|mimes:pdf|max:8192', // PDF y tamaño máximo 2MB
         ]);
 
         $archivoPDF = $request->file('archivo_pdf');
@@ -840,29 +1018,72 @@ public function gpdf(Request $request)
 
             } elseif( str_contains($estadoContrato,'RPC')){
  
-                    $datos = DB::select(" SELECT f.Id
-                    ,ca.Ruta
-                    ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
-                    ,ca.Observacion
-                    ,upper(f.Nombre) Nombre,f.tipo
-                    ,$idContrato as idContrato
-                    ,1 as idCuota
-                    FROM Formatos f Left JOIN 
-                    (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,1) =1 AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
-                    inner join (
-                    select a.* , b.Nivel 
-                            from Formatos a
-                            inner join Contratos b
-                            on a.Id_Dp = b.Id_Dp 
-                            where b.Id = $idContrato  
-                    ) c on f.Id = c.Id
-                    where c.buzon IN (2,3)
-                    order by f.Id asc"); 
+                     if($perfiUser == 10   )  {
+                            $datos = DB::select(" SELECT f.Id
+                            ,ca.Ruta
+                            ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
+                            ,ca.Observacion
+                            ,upper(f.Nombre) Nombre,f.tipo
+                            ,$idContrato as idContrato
+                            ,1 as idCuota
+                            FROM Formatos f Left JOIN 
+                            (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,1) =1 AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                            inner join (
+                            select a.* , b.Nivel 
+                                    from Formatos a
+                                    inner join Contratos b
+                                    on a.Id_Dp = b.Id_Dp 
+                                    where b.Id = $idContrato  
+                            ) c on f.Id = c.Id
+                            where c.buzon IN (3)
+                            order by f.Id asc"); 
+
+                        }elseif($perfiUser == 11   )  {
+                            $datos = DB::select(" SELECT f.Id
+                            ,ca.Ruta
+                            ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
+                            ,ca.Observacion
+                            ,upper(f.Nombre) Nombre,f.tipo
+                            ,$idContrato as idContrato
+                            ,1 as idCuota
+                            FROM Formatos f Left JOIN 
+                            (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,1) =1 AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                            inner join (
+                            select a.* , b.Nivel 
+                                    from Formatos a
+                                    inner join Contratos b
+                                    on a.Id_Dp = b.Id_Dp 
+                                    where b.Id = $idContrato  
+                            ) c on f.Id = c.Id
+                            where c.buzon IN (4)
+                            order by f.Id asc"); 
+                        }else {
+                            $datos = DB::select(" SELECT f.Id
+                            ,ca.Ruta
+                            ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
+                            ,ca.Observacion
+                            ,upper(f.Nombre) Nombre,f.tipo
+                            ,$idContrato as idContrato
+                            ,1 as idCuota
+                            FROM Formatos f Left JOIN 
+                            (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,1) =1 AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                            inner join (
+                            select a.* , b.Nivel 
+                                    from Formatos a
+                                    inner join Contratos b
+                                    on a.Id_Dp = b.Id_Dp 
+                                    where b.Id = $idContrato  
+                            ) c on f.Id = c.Id
+                            where c.buzon IN (2".($perfiUser == 10 || $perfiUser == 1 || $perfiUser == 13? ",3" : "").")
+                            order by f.Id asc"); 
+
+                        }
+
 
             }
             
             else {
-
+ 
                     $tipos = [3]; 
                     $estadoLow = strtolower($estadoContrato);        // Llevamos todo a minúsculas para comparar 
                     if ($estadoLow === 'firma hoja de vida' || $estadoLow === 'documentos aprobados'|| $estadoLow === 'documentos aprobados') { $tipos[] = 5; } 
@@ -874,9 +1095,9 @@ public function gpdf(Request $request)
                         ,ca.Observacion
                         ,upper(f.Nombre) Nombre,f.tipo
                         ,$idContrato as idContrato
-                        ,1 as idCuota
+                        ,$idCuota as idCuota
                         FROM Formatos f Left JOIN 
-                        (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,1) =1 AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                        (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) =$idCuota AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
                         inner join (
                         select a.* , b.Nivel 
                                 from Formatos a
@@ -888,33 +1109,86 @@ public function gpdf(Request $request)
                         order by f.Id asc"); 
 
             }
-
-
-
+ 
         } else {
 
-            $datos = DB::select("SELECT f.Id
-            ,ca.Ruta
-            ,case when ca.Estado is null then (case when  f.Opcional=1  then 'OPCIONAL' else upper(ca.Estado) end) else upper(ca.Estado) end AS Estado
-            ,ca.Observacion
-            ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
-            ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
-            ,f.tipo
-            ,$idContrato as idContrato
-            ,$idCuota as idCuota
-            FROM Formatos f Left JOIN 
-            (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) =$idCuota AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
-            inner join (
-            select a.Id
-                    from Formatos a
-                    inner join Contratos b
-                    on a.Id_Dp = b.Id_Dp
-                    inner join Cuotas c
-                    on b.Id = c.Contrato
-                    where b.Id = $idContrato and c.Id = $idCuota
-                    and a.etapa <= (case when c.Cuota = b.Cuotas then 2 else 1 end) and a.tipo > (case when c.Cuota = 1 then -1 else 0 end)
-            ) c on f.Id = c.Id
-            order by f.tipo desc");
+            if($perfiUser == 10   )  {
+
+                $datos = DB::select("SELECT f.Id
+                            ,ca.Ruta
+                            ,case when ca.Estado is null then (case when  f.Opcional=1  then 'OPCIONAL' else upper(ca.Estado) end) else upper(ca.Estado) end AS Estado
+                            ,ca.Observacion
+                            ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
+                            ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
+                            ,f.tipo
+                            ,$idContrato as idContrato
+                            ,$idCuota as idCuota
+                            FROM Formatos f Left JOIN 
+                            (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) =$idCuota AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                            inner join (
+                            select a.Id
+                                    from Formatos a
+                                    inner join Contratos b
+                                    on a.Id_Dp = b.Id_Dp
+                                    inner join Cuotas c
+                                    on b.Id = c.Contrato
+                                    where b.Id = $idContrato and c.Id = $idCuota 
+                                    and a.buzon = 7
+                            ) c on f.Id = c.Id
+                            order by f.tipo desc");
+
+            }if($perfiUser == 13   )  {
+
+                $datos = DB::select("SELECT f.Id
+                            ,ca.Ruta
+                            ,case when ca.Estado is null then (case when  f.Opcional=1  then 'OPCIONAL' else upper(ca.Estado) end) else upper(ca.Estado) end AS Estado
+                            ,ca.Observacion
+                            ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
+                            ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
+                            ,f.tipo
+                            ,$idContrato as idContrato
+                            ,$idCuota as idCuota
+                            FROM Formatos f Left JOIN 
+                            (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) =$idCuota AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                            inner join (
+                            select a.Id
+                                    from Formatos a
+                                    inner join Contratos b
+                                    on a.Id_Dp = b.Id_Dp
+                                    inner join Cuotas c
+                                    on b.Id = c.Contrato
+                                    where b.Id = $idContrato and c.Id = $idCuota 
+                                    and a.buzon = 8
+                            ) c on f.Id = c.Id
+                            order by f.tipo desc");
+
+            }else {
+
+                $datos = DB::select("SELECT f.Id
+                    ,ca.Ruta
+                    ,case when ca.Estado is null then (case when  f.Opcional=1  then 'OPCIONAL' else upper(ca.Estado) end) else upper(ca.Estado) end AS Estado
+                    ,ca.Observacion
+                    ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
+                    ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
+                    ,f.tipo
+                    ,$idContrato as idContrato
+                    ,$idCuota as idCuota
+                    ,orden
+                    FROM Formatos f Left JOIN 
+                    (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) IN (1,$idCuota) AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                    inner join ( 
+                    select a.Id 
+                            from Formatos a
+                            inner join Contratos b on a.Id_Dp = b.Id_Dp
+                            inner join Cuotas c on b.Id = c.Contrato
+                            where b.Id = $idContrato and c.Id = $idCuota
+                            and a.etapa <= (case when c.Cuota = b.Cuotas then 2 else 1 end)  
+                            and a.tipo_cuota >= (case when c.Cuota = 1 then -1 else 0 end)  
+                    ) c on f.Id = c.Id
+                    order by orden ASC");
+
+            }
+            
         }
 
 
@@ -922,6 +1196,7 @@ public function gpdf(Request $request)
         return view('tablaCargueDoc', compact('datos'));
     }
 
+    
      public function uploadHV(Request $request)
     {
          
@@ -934,9 +1209,9 @@ public function gpdf(Request $request)
         $perfiUser = DB::table('UserPerfil') ->where('idUser', $idUser) ->where('idPerfil', '>', 2) ->pluck('idPerfil')  ->toArray();       
         $perfil = $perfiUser[0] ; 
 
-
+ 
         $request->validate([
-            'archivo_pdf' => 'required|mimes:pdf|max:2048', // PDF y tamaño máximo 2MB
+            'archivo_pdf' => 'required|mimes:pdf|max:8192', // PDF y tamaño máximo 2MB
         ]);
 
         $archivoPDF = $request->file('archivo_pdf');
@@ -970,29 +1245,60 @@ public function gpdf(Request $request)
   
         if($idCuota > 1 ) {
 
-                $datos = DB::select("SELECT f.Id
-                ,ca.Ruta
-                ,upper(ca.Estado) Estado
-                ,ca.Observacion
-                ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
-                ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
-                ,f.tipo
-                ,$idContrato as idContrato
-                ,$idCuota as idCuota,ca.Id as Id_cargue_archivo
-                FROM Formatos f Left JOIN 
-                (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND isnull(ca.id_cuota,$idCuota) =$idCuota AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
-                inner join (
-                select a.Id
-                        from Formatos a
-                        inner join Contratos b
-                        on a.Id_Dp = b.Id_Dp
-                        inner join Cuotas c
-                        on b.Id = c.Contrato
-                        where b.Id = $idContrato and c.Id = $idCuota
-                        and a.etapa <= case when c.Cuota = b.Cuotas then 2 else 1 end
-                ) c on f.Id = c.Id
-                order by f.tipo desc");
-            
+
+                        if ($perfil == 12 ){
+                                $datos = DB::select("SELECT f.Id
+                                ,ca.Ruta
+                                ,upper(ca.Estado) Estado
+                                ,ca.Observacion
+                            ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
+                                ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
+                                ,f.tipo
+                                ,$idContrato as idContrato
+                                ,$idCuota as idCuota,ca.Id as Id_cargue_archivo
+                                FROM Formatos f Left JOIN 
+                                (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato AND isnull(ca.id_cuota,$idCuota) IN (1,$idCuota) AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                                inner join (
+                                select a.Id
+                                        from Formatos a
+                                        inner join Contratos b
+                                        on a.Id_Dp = b.Id_Dp
+                                        inner join Cuotas c
+                                        on b.Id = c.Contrato
+                                        where b.Id = $idContrato and c.Id = $idCuota
+                                        and a.etapa <= (case when c.Cuota = b.Cuotas then 2 else 1 end)  
+                                        and a.tipo_cuota >= (case when c.Cuota = 1 then -1 else 0 end) 
+                                ) c on f.Id = c.Id
+                                order by f.orden asc"); 
+                        }else{
+
+                                $datos = DB::select("SELECT f.Id
+                                ,ca.Ruta
+                                ,upper(ca.Estado) Estado
+                                ,ca.Observacion
+                            ,CASE  WHEN f.Nombre = 'PLANILLA' THEN  'PLANILLA - Base: $' + FORMAT(CASE   WHEN (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 < 1423500 THEN CAST(1423500 AS MONEY)
+                                ELSE (SELECT Valor_Mensual FROM Contratos WHERE id = $idContrato) * 0.4 END,'N0','es-ES') ELSE UPPER(f.Nombre) END AS Nombre
+                                ,f.tipo
+                                ,$idContrato as idContrato
+                                ,$idCuota as idCuota,ca.Id as Id_cargue_archivo
+                                FROM Formatos f Left JOIN 
+                                (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato AND isnull(ca.id_cuota,$idCuota) IN (1,$idCuota) AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+                                inner join (
+                                select a.Id
+                                        from Formatos a
+                                        inner join Contratos b
+                                        on a.Id_Dp = b.Id_Dp
+                                        inner join Cuotas c
+                                        on b.Id = c.Contrato
+                                        where b.Id = $idContrato and c.Id = $idCuota
+                                        and a.etapa <= (case when c.Cuota = b.Cuotas then 2 else 1 end) and a.tipo >= (case when c.Cuota = 1 then -1 else 0 end)
+                                ) c on f.Id = c.Id
+                                order by f.orden asc");
+
+
+
+                        }
+                            
 
         } else{   
  
@@ -1015,7 +1321,7 @@ public function gpdf(Request $request)
                             where b.Id = $idContrato  
                             and a.tipo IN ($inLista)
                     ) c on f.Id = c.Id
-                    order by f.tipo asc");
+                    order by f.orden asc");
         }
 
             return view('tablaDocJuridica', compact('datos','estadoContrato','perfil')); 
@@ -1023,36 +1329,152 @@ public function gpdf(Request $request)
 
  
 
+
+    public function uploadFile3(Request $request)
+    {
+    // Validar el contrato
+        \Log::info('Request Data:', $request->all());
+    
+        // $idContrato = $request->id;
+        $idCuota = $request->idCuota;
+        $idContrato = $request->idContrato;
+        $idFormato = $request->idFormato;
+        $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('Estado_interno'); 
+        $idestadoContrato = DB::table('contratos')->where('id', $idContrato)->value('id_estado'); 
+        $idUser = auth()->user()->id;
+        $perfil = DB::table('UserPerfil') ->where('idUser', $idUser) ->where('idPerfil', '!=', 2)->where('idPerfil', '!=', 1) ->orderBy('idPerfil', 'asc') ->pluck('idPerfil') ->toArray();
+        $perfiUser = $perfil[0] ?? null; 
+        
+        // $datos = DB::select("");
+        if (!$request->hasFile('archivo_pdf')) {
+            return back()->with('error', 'El archivo es demasiado grande. Máximo permitido: 8MB');
+        }
+
+        // Validar y procesar el archivo PDF
+        $request->validate([
+            'archivo_pdf' => 'required|mimes:pdf|max:8192', // PDF y tamaño máximo 2MB
+        ]);
+
+        $archivoPDF = $request->file('archivo_pdf');
+
+        // Generar un nombre de archivo único
+        $nombreArchivo = $idContrato . '_' . $idCuota . '_' .$idFormato  .'.' .$archivoPDF->getClientOriginalExtension();
+
+        // Guardar el archivo en storage/app/doc_cuenta
+        $rutaAlmacenamiento = 'public\doc_cuenta';
+        $archivoPDF->storeAs($rutaAlmacenamiento, $nombreArchivo);
+
+        // Obtener la URL del archivo almacenado
+        $rutaCompleta = Storage::path($rutaAlmacenamiento . '/' . $nombreArchivo);
+        
+        $queryResult = DB::select("SET NOCOUNT ON ;  DECLARE @idCuota INT; 
+            EXEC [dbo].[registroCargueArchivo] $idContrato,
+            $idCuota,
+            '$rutaCompleta',
+            $idFormato,@idCuota OUTPUT;
+            SELECT @idCuota AS idCuota");
+        
+        $idCargueArchivo = $queryResult[0]->idCuota; 
+  
+         
+        $tipos = [5];  
+        $inLista = implode(',', $tipos); 
+        
+        $datos = DB::select("SELECT f.Id
+        ,ca.Ruta
+        ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
+        ,ca.Observacion
+        ,upper(f.Nombre) Nombre,f.tipo
+        ,1 as idCuota
+        ,$idContrato as idContrato 
+        FROM Formatos f 
+		Left JOIN (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+        left join ( select distinct a.Id, b.Nivel
+                from Formatos a
+                inner join Contratos b
+                on a.Id_Dp = b.Id_Dp 
+                where b.Id = $idContrato   
+        ) c on f.Id = c.Id
+		where tipo IN ($inLista)
+        order by f.id asc"); 
+        
+        return view('tablaCargueDoc', compact('datos','estadoContrato'));
+    }
+
+
+
     public function btnEnviarCuota(Request $request)
     {
         $idUser = auth()->user()->id;
         $idContrato = $request->idContrato;
         $idCuota = $request->idCuota;
-    
-        // Validación: si idCuota es nulo o igual a 1, redirigir
-        if (is_null($idCuota) || $idCuota == 1) {
+        $documentoContratista = DB::table('Contratos')->where('Id', $idContrato)->value('No_Documento');
 
-            $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('id_estado');  
-            $estado = DB::table('Cambio_estado')->where('id', $estadoContrato)->value('pos_estado'); 
-            $idnuevoestado = DB::table('Cambio_estado')->where('id', $estado)->first();
+            // Validación: si idCuota es nulo o igual a 1, redirigir
+            if (is_null($idCuota) || $idCuota == 1) {
 
-            if ($idnuevoestado) {
-            DB::table('contratos')
-                ->where('id', $idContrato) 
-                    ->update(['Estado' => $idnuevoestado->EstadoUsuario,'id_estado' => $idnuevoestado->id]);
-            }
+                $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('id_estado');  
+                $estado = DB::table('Cambio_estado')->where('id', $estadoContrato)->value('pos_estado'); 
+                $idnuevoestado = DB::table('Cambio_estado')->where('id', $estado)->first();
 
-        }
+                if ($idnuevoestado) {
+                $contrato = \App\Models\Contrato::find($idContrato);
+
+                if ($contrato && $idnuevoestado) {
+                    $contrato->Estado         = $idnuevoestado->EstadoUsuario;
+                    $contrato->Estado_interno = $idnuevoestado->EstadoInterno;
+                    $contrato->id_estado      = $idnuevoestado->id;
+                    $contrato->save(); // 🔥 Esto sí dispara el observer
+                }
+                }
+
+                        // Ejecutar envio o notificacion whatsapp y correo 
+                        $estadoActual = DB::select(" SELECT ce.*  FROM contratos c  INNER JOIN Cambio_estado ce ON ce.Id = c.id_estado  WHERE c.id = $idContrato ");
+
+                            if (!empty($estadoActual)) { $estado = $estadoActual[0];
+                                $estadoArray = [ 'EstadoUsuario' => $estado->EstadoUsuario, 'EstadoInterno' => $estado->EstadoInterno, 'notificarInterno' => $estado->notificarInterno, ];
+                                if ($estado->notificarUsuario >= 1) { $response = Http::post(url('/api/notificar/usuario'), [ 'idContrato' => $idContrato, 'idCuota' => $idCuota, 'documentoContratista' => $documentoContratista, 'estadoActual' => $estadoArray, ]);}
+                                if ($estado->notificarInterno >= 1) { $response = Http::post(url('/api/notificar/interno'), [ 'idContrato' => $idContrato, 'idCuota' => $idCuota, 'estadoActual' => $estadoArray, ]);}
+                            }
+
+                }
  
-        // Ejecutar SP
-        $cambioEstado = DB::update("EXEC [sp_cambioEstado] $idCuota,2,1,$idUser;");
-    
+                            // Ejecutar SP
+                            $cambioEstado = DB::update("EXEC [sp_cambioEstado] $idCuota,2,1,$idUser;");
+                            $cuota = \App\Models\Cuota::find($idCuota);
+
+                                    if ($cuota) {
+                                        \App\Models\Bitacora::create([
+                                            'id_usuario'     => auth()->id(),
+                                            'nombre_usuario' => auth()->user()->name ?? 'Desconocido',
+                                            'accion'         => 'Actualizó cuota (SP)',
+                                            'modulo'         => 'Cuotas',
+                                            'Estado_interno' => $cuota->Estado_juridica ?? null,
+                                            'detalles'       => 'Actualización vía sp_cambioEstado',
+                                            'idContrato'     => $cuota->Contrato ?? null,
+                                            'idCuota'        => $cuota->Id,
+                                            'id_dp'          => auth()->user()->id_dp ?? null,
+                                            'fecha'          => now(),
+                                            'ip'             => request()->ip(),
+                                            'user_agent'     => request()->userAgent(),
+                                            'ruta'           => request()->path(),
+                                            'metodo'         => request()->method(),
+                                        ]);
+                                    }
+
+                                // Ejecutar envio o notificacion whatsapp y correo 
+                                $estadoActual = DB::select(" SELECT ce.*  FROM cuotas c  INNER JOIN Cambio_estado ce ON ce.Id = c.idEstado  WHERE c.id = $idCuota ");
+  
+                            if (!empty($estadoActual)) { $estado = $estadoActual[0];
+                                $estadoArray = [ 'EstadoUsuario' => $estado->EstadoUsuario, 'EstadoInterno' => $estado->EstadoInterno, 'notificarInterno' => $estado->notificarInterno, ];
+                                if ($estado->notificarUsuario >= 1) { $response = Http::post(url('/api/notificar/usuario'), [ 'idContrato' => $idContrato, 'idCuota' => $idCuota, 'documentoContratista' => $documentoContratista, 'estadoActual' => $estadoArray, ]);}
+                                if ($estado->notificarInterno >= 1) { $response = Http::post(url('/api/notificar/interno'), [ 'idContrato' => $idContrato, 'idCuota' => $idCuota, 'estadoActual' => $estadoArray, ]);}
+                            }
+
         // Obtener datos
         $datos = Cuota::where('Contrato', $idContrato)->orderBy('Cuota', 'asc')->simplePaginate(12);
 
-        $num_contrato = DB::table('Contratos')
-        ->where('id', $idContrato)
-        ->value('Num_Contrato');
+        $num_contrato = DB::table('Contratos') ->where('id', $idContrato) ->value('Num_Contrato');
 
         $format = DB::select("
             select a.*, c.Cuota, c.Id as idCuota
@@ -1099,30 +1521,27 @@ public function gpdf(Request $request)
         $idUsuario = auth()->user()->id;
 
         // Obtén la lista de archivos a comprimir
-        $archivosAComprimir = DB::select("select a.Id_contrato 
-        ,replace(a.Ruta,'https://cuentafacil.co/storage','public') as Ruta
-        ,d.Nombre as nameContratista,c.Nombre as nameFile,id_cuota 
-        ,e.Cuota
-        from Cargue_Archivo a
-        left join Contratos b on a.Id_contrato = b.id
-        inner join Formatos c on a.Id_formato = c.Id
-        left join Base_Datos d on b.No_Documento = d.Documento
-        inner join Cuotas e on a.id_cuota = e.Id
-        where e.Estado_juridica = 'APROBADA'
-        and id_cuota = $idCuota and a.Estado = 'APROBADA'
-        union all
-        select distinct a.Id_contrato
-        ,replace(a.Ruta,'https://cuentafacil.co/storage','public') as Ruta
-        ,d.Nombre as nameContratista,c.Nombre as nameFile,e.Id 
-        ,e.Cuota
-        from Cargue_Archivo a
-        left join Contratos b on a.Id_contrato = b.id
-        inner join Formatos c on a.Id_formato = c.Id
-        left join Base_Datos d on b.No_Documento = d.Documento
-        inner join Cuotas e on a.Id_contrato = e.Contrato
-        where a.Estado = 'APROBADA' and e.estado = 'APROBADA'
-		and e.Id = $idCuota
-        and c.Tipo = 1");
+        $archivosAComprimir = DB::select("
+            SELECT a.Id_contrato, REPLACE(a.Ruta, 'https://cuentafacil.co/storage', 'public') AS Ruta,
+                d.Nombre AS nameContratista, c.Nombre AS nameFile, id_cuota, e.Cuota
+            FROM Cargue_Archivo a
+            LEFT JOIN Contratos b ON a.Id_contrato = b.id
+            INNER JOIN Formatos c ON a.Id_formato = c.Id
+            LEFT JOIN Base_Datos d ON b.No_Documento = d.Documento
+            INNER JOIN Cuotas e ON a.id_cuota = e.Id
+            WHERE e.Estado_juridica = 'PENDIENTE SAP' AND id_cuota = ? AND a.Estado = 'APROBADA'
+
+            UNION ALL
+
+            SELECT DISTINCT a.Id_contrato, REPLACE(a.Ruta, 'https://cuentafacil.co/storage', 'public') AS Ruta,
+                d.Nombre AS nameContratista, c.Nombre AS nameFile, e.Id, e.Cuota
+            FROM Cargue_Archivo a
+            LEFT JOIN Contratos b ON a.Id_contrato = b.id
+            INNER JOIN Formatos c ON a.Id_formato = c.Id
+            LEFT JOIN Base_Datos d ON b.No_Documento = d.Documento
+            INNER JOIN Cuotas e ON a.Id_contrato = e.Contrato
+            WHERE a.Estado = 'APROBADA' AND e.estado = 'RADICANDO SAP' AND e.Id = ? AND c.Tipo <= 2
+        ", [$idCuota, $idCuota]);
 
         $numeroAleatorio = strval(rand(1000, 9999)); // Genera un número aleatorio de 10 dígitos
         
@@ -1149,29 +1568,78 @@ public function gpdf(Request $request)
                 $rutaRelativa = $archivo->Id_contrato .'_Cuota_' .$archivo->Cuota .'_' .$archivo->nameContratista .'/' . $nombreArchivo;
                 $nombreZip = 'Cuota_' .$archivo->Cuota .'_' .$archivo->nameContratista;
                 $zip->addFile($rutaArchivo, $rutaRelativa);
-                // print_r($zip);die();
+       
             }
-            
-            // $zip->addFile(storage_path('app/temp/FUID_' .$cadenaAleatoriaNumerica .'.xlsx'), 'data.xlsx');
-            // $zip->addFromString('data.xlsx', $excelFile->getFile()->getContents());
+             
             $zip->close();
-            // $up = DB::update("exec InsertAndUpdateLotes '$idLote',$idDependencia");
-            // Devuelve el archivo zip al usuario
+    
             return response()->download($archivoZip, $nombreZip)->deleteFileAfterSend(true);
         } else {
             return response()->json(['error' => 'No se pudo crear el archivo comprimido'], 500);
         }
     }
 
+ 
     public function enviarAdmin(Request $request)
     {
         $idUsuario = auth()->user()->id;
         $idDependencia = auth()->user()->id_dp;
-        // print_r($idUsuario);die();
-        $update = DB::update("exec InsertAndUpdateLotes $idDependencia,$idUsuario");
 
-        return $update;
+        // Ejecutar el SP
+        $result = DB::select("exec InsertAndUpdateLotes $idDependencia, $idUsuario");
+        $idFuid = $result[0]->InsertedId ?? null;
+
+        if (!$idFuid || $idFuid == -1) {
+            return response()->json(['status' => 'error', 'message' => 'No se creó lote nuevo.']);
+        }
+
+        $cuotas = DB::table('Cuotas')
+            ->where('FUID', $idFuid)
+            ->pluck('Id');
+
+        if ($cuotas->isEmpty()) {
+            return response()->json(['status' => 'error', 'message' => 'No se encontraron cuotas para actualizar.']);
+        }
+
+        $cambiadas = 0;
+
+        foreach ($cuotas as $idCuota) {
+            $ok = DB::update("EXEC [sp_cambioEstado] ?, ?, ?, ?", [$idCuota, 2, 1, $idUsuario]);
+
+            if ($ok) {
+                $cambiadas++;
+
+                $cuota = Cuota::find($idCuota);
+                if ($cuota) {
+                    Bitacora::create([
+                        'id_usuario'     => $idUsuario,
+                        'nombre_usuario' => auth()->user()->name ?? 'Desconocido',
+                        'accion'         => 'Actualizó cuota (SP masivo)',
+                        'modulo'         => 'Cuotas',
+                        'Estado_interno' => $cuota->Estado_juridica ?? null,
+                        'detalles'       => 'Lote generado → sp_cambioEstado',
+                        'idContrato'     => $cuota->Contrato ?? null,
+                        'idCuota'        => $cuota->Id,
+                        'id_dp'          => auth()->user()->id_dp ?? null,
+                        'fecha'          => now(),
+                        'ip'             => request()->ip(),
+                        'user_agent'     => request()->userAgent(),
+                        'ruta'           => request()->path(),
+                        'metodo'         => request()->method(),
+                    ]);
+                }
+            }
+        }
+
+        return response()->json([
+            'status' => 'ok',
+            'fuid' => $idFuid,
+            'cuotas_afectadas' => $cuotas->count(),
+            'estados_actualizados' => $cambiadas
+        ]);
     }
+
+
 
     public function generarZipOld(Request $request)
     {
@@ -1195,7 +1663,7 @@ public function gpdf(Request $request)
         union all
         select distinct a.Id_contrato
         ,replace(a.Ruta,'https://cuentafacil.co/storage','public') as Ruta
-        ,d.Nombre as nameContratista,c.Nombre as nameFile,e.Id 
+        ,d.Nombre as nameContratista,c.Nombre as nameFile,e.Id
         ,e.Cuota
         from Cargue_Archivo a
         left join Contratos b on a.Id_contrato = b.id
@@ -1298,8 +1766,8 @@ public function gpdf(Request $request)
             ->pluck('Estado', 'Estado');
     
         $anios = DB::table('Historico_Contratos')
-            ->selectRaw('YEAR(Fecha_Inicio) as year')
-            ->groupByRaw('YEAR(Fecha_Inicio)')
+            ->selectRaw('YEAR(fecha_creacion) as year')
+            ->groupByRaw('YEAR(fecha_creacion)')
             ->orderByDesc('year')
             ->pluck('year', 'year');
     

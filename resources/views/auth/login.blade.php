@@ -107,9 +107,9 @@
                 </div>
             </div>
 
-            <a class="btn btn-link" href="{{ route('register') }}">
+            {{-- <a class="btn btn-link" href="{{ route('register') }}">
                 {{ __('Crear usuario ') }}
-            </a>
+            </a> --}}
         </div>
     </div>
 </div>

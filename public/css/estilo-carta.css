@@ -78,3 +78,18 @@ body {
     line-height: 7px;
     padding: 10px;
 }
+#firma-wrapper {
+    position: absolute;
+    z-index: 20;
+    transform-origin: top left;
+}
+
+#firma-handle {
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    font-size: 12px;
+    padding: 2px 8px;
+    cursor: move;
+    border-radius: 4px 4px 0 0;
+    text-align: center;
+}

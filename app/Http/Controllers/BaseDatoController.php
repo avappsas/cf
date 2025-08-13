@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\BaseDato;
+use App\Models\BaseDato; 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
@@ -60,9 +60,15 @@ class BaseDatoController extends Controller
      */
     public function create()
     {
+        $id_dp = auth()->user()->id_dp;   
+        $idUser = auth()->user()->id;
+        $perfiUser = DB::table('UserPerfil')
+            ->where('idUser', $idUser)
+            ->max('idPerfil');    
+
         $baseDato = new BaseDato(); 
 
-        return view('base-datos.create', compact('baseDato'));
+        return view('base-datos.create', compact('baseDato','perfiUser'));
     }
 
     /**
@@ -73,6 +79,15 @@ class BaseDatoController extends Controller
      */
     public function store(Request $request)
     {
+
+
+            // 👇 Validación previa de existencia
+        $existe = BaseDato::where('Documento', $request->Documento)->exists();
+
+        if ($existe) {
+            return redirect()->back()->with('error', '⚠️ El documento ya está registrado.');
+        }
+
         $request->validate(BaseDato::$rules + [
             'firma' => 'nullable|file|mimes:jpg,png|max:2048',
         ]);
@@ -105,6 +120,12 @@ class BaseDatoController extends Controller
      */
     public function show($id)
     {
+        $id_dp = auth()->user()->id_dp;   
+        $idUser = auth()->user()->id;
+        $perfiUser = DB::table('UserPerfil')
+            ->where('idUser', $idUser)
+            ->max('idPerfil');    
+
         $baseDato = BaseDato::find($id);
 
         return view('base-datos.show', compact('baseDato'));
@@ -118,9 +139,16 @@ class BaseDatoController extends Controller
      */
     public function edit($id)
     {
+
+        $id_dp = auth()->user()->id_dp;   
+        $idUser = auth()->user()->id;
+        $perfiUser = DB::table('UserPerfil')
+            ->where('idUser', $idUser)
+            ->max('idPerfil');    
+
         $baseDato = BaseDato::find($id);
 
-        return view('base-datos.edit', compact('baseDato'));
+        return view('base-datos.edit', compact('baseDato','perfiUser'));
     }
 
     /**
@@ -191,15 +219,6 @@ class BaseDatoController extends Controller
     
         return redirect()->route('base-datos.edit', $id);
     }
-
-    public function verFirma($id)
-    {
-        $registro = BaseDato::findOrFail($id);
-    
-        if (!$registro->firma || !Storage::exists($registro->firma)) {
-            abort(404);
-        }
-    
-        return response()->file(storage_path('app/' . $registro->firma));
-    }
+  
+ 
 }

@@ -30,8 +30,7 @@ use App\Mail\Notificacion;
 use Illuminate\Support\Facades\Mail; 
 use App\Exports\ContratosExport;   // ← Asegúrate de esta línea
 use App\Services\GoogleDocPdfService;
-use Illuminate\Support\Arr;   
-
+use Illuminate\Support\Arr;      
 /**
  * Class ContratoController
  * @package App\Http\Controllers
@@ -42,89 +41,149 @@ class ContratacionController extends Controller
     public function bandejacontrato(Request $request)
     {
         $idUser = auth()->user()->id;
-        $perfil = 0; // Valor por defecto para usuarios sin perfil
-    
-        $estadoA = 'Documentos Enviados';
-        $estadoA1 = 'Hoja de Vida Enviada'; 
-        $estadoB = 'Documentos Devueltos';
-        $estadoC = 'Documentación';  
-        
-        $estadoD = 'Documentos Aprobados';  
-        $estadoF = 'Firma Hoja de Vida';  
-        $estadoG = 'Hoja de Vida Aprobada';  
-
-        $estadoH = 'CDP - Aprobado';  
-        $estadoI = 'RPC - Aprobado';  
-
         $id_dp = auth()->user()->id_dp;
-    
-        $contratos = DB::table('contratos as cC') //Enviados
-            ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
-            ->leftJoin('users as u', 'cc.id_user', '=', 'u.id') 
-            ->leftjoin('Oficinas as o', 'cc.Oficina', '=', 'o.id') // ← este es el nuevo JOIN
-            ->where('cc.Id_Dp', $id_dp)
-            ->where(function ($query) use ($estadoA, $estadoA1) {
-                $query->where('cc.Estado', $estadoA)
-                      ->orWhere('cc.Estado', $estadoA1);
-            })
-            ->select('cc.*', 'b.*', 'u.name as nombre_usuario', 'o.Oficina as nombre_oficina') // opcional
-            ->simplePaginate(150);
-    
-        $contratosB = DB::table('contratos as cC') //Devueltos
-            ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
-            ->leftJoin('users as u', 'cc.id_user', '=', 'u.id') 
-            ->leftjoin('Oficinas as o', 'cc.Oficina', '=', 'o.id') // ← este es el nuevo JOIN
-            ->where('cc.Id_Dp', $id_dp)
-            ->where('cc.Estado', $estadoB)
-            ->select('cc.*', 'b.*', 'u.name as nombre_usuario', 'o.Oficina as nombre_oficina') // opcional
-            ->simplePaginate(150);
-    
-        $contratosC = DB::table('contratos as cC') //Pendientes por envio
-            ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
-            ->leftJoin('users as u', 'cc.id_user', '=', 'u.id') 
-            ->leftjoin('Oficinas as o', 'cc.Oficina', '=', 'o.id') // ← este es el nuevo JOIN
-            ->where('cc.Id_Dp', $id_dp)
-            ->where('cc.Estado', $estadoC)
-            ->select('cc.*', 'b.*', 'u.name as nombre_usuario', 'o.Oficina as nombre_oficina') // opcional
-            ->simplePaginate(150);
+        $hoy = now()->toDateString();
+        $buscar = $request->input('buscar');
+        $tabDestino = null;
 
-        $contratosD = DB::table('contratos as cC')  //Aprobados
-            ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
-            ->leftJoin('users as u', 'cc.id_user', '=', 'u.id') 
-            ->leftjoin('Oficinas as o', 'cc.Oficina', '=', 'o.id') // ← este es el nuevo JOIN
-            ->where('cc.Id_Dp', $id_dp)
-            ->where(function ($query) use ($estadoD, $estadoF, $estadoG) {
-                $query->where('cc.Estado', $estadoD)
-                      ->orWhere('cc.Estado', $estadoF)->orWhere('cc.Estado', $estadoG);
-            })
-            ->select('cc.*', 'b.*', 'u.name as nombre_usuario', 'o.Oficina as nombre_oficina') // opcional
-            ->simplePaginate(150);
+        $recordatoriosHoy = DB::table('recordatorios_enviados')
+            ->whereDate('enviado_en', $hoy)
+            ->pluck('id_contrato')
+            ->toArray();
 
-        $contratosF = DB::table('contratos as cC') //Contratacion ya aprobado el CDP
+        $perfiUser = DB::table('UserPerfil')->where('idUser', $idUser)->where('idPerfil', '!=', 2)->pluck('idPerfil')->toArray();
+        $perfil = $perfiUser[0];
+
+        // Estados
+        $estadoA = 'Documentos Enviados';
+        $estadoA1 = 'Hoja de Vida Enviada';
+        $estadoB = 'Documentos Devueltos';
+        $estadoC = 'Documentación';
+        $estadoD = 'Documentos Aprobados';
+        $estadoF = 'Firma Hoja de Vida';
+        $estadoG = 'Hoja de Vida Aprobada';
+        $estadoH = 'CDP - Aprobado';
+        $estadoI = 'Firma Secop-Contratista';
+        $estadoJ = 'RPC - Aprobado';
+        $estadoK = 'Firma Secop-Presidencia';
+
+        // 🟡 Buscador: función para aplicar búsqueda
+        $filtrar = function ($query) use ($buscar) {
+            return $query->when($buscar, function ($q) use ($buscar) {
+                $q->where(function ($sub) use ($buscar) {
+                    $sub->where('b.Nombre', 'like', "%{$buscar}%")
+                        ->orWhere('b.Documento', 'like', "%{$buscar}%");
+                });
+            });
+        };
+
+        // Pestaña: Documentos Recibidos
+        $contratos = $filtrar(DB::table('contratos as cc')
             ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
-            ->leftJoin('users as u', 'cc.id_user', '=', 'u.id') 
-            ->leftjoin('Oficinas as o', 'cc.Oficina', '=', 'o.id') // ← este es el nuevo JOIN
-            ->where('cc.Id_Dp', $id_dp) 
-            ->whereIn('cc.Estado', [$estadoH, $estadoI])
-            ->select('cc.*', 'b.*', 'u.name as nombre_usuario', 'o.Oficina as nombre_oficina') // opcional
-            ->simplePaginate(150);
-    
-        return view('contratacion.bandejacontrato', compact('contratos', 'contratosB', 'contratosC', 'contratosD', 'contratosF', 'perfil'))
-            ->with('i', (request()->input('page', 1) - 1) * $contratos->perPage());
+            ->leftJoin('users as u', 'cc.id_user', '=', 'u.id')
+            ->leftJoin('oficinas as o', 'cc.Oficina', '=', 'o.id')
+            ->where('cc.Id_Dp', $id_dp)
+            ->where(function ($q) use ($estadoA, $estadoA1) {
+                $q->where('cc.Estado_Interno', $estadoA)
+                ->orWhere('cc.Estado_Interno', $estadoA1);
+            })
+            ->select('cc.*', 'b.*', 'u.name as nombre_usuario', 'o.Oficina as nombre_oficina'))
+            ->simplePaginate(50);
+
+        // Pestaña: Documentos Devueltos
+        $contratosB = $filtrar(DB::table('contratos as cc')
+            ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
+            ->leftJoin('users as u', 'cc.id_user', '=', 'u.id')
+            ->leftJoin('oficinas as o', 'cc.Oficina', '=', 'o.id')
+            ->where('cc.Id_Dp', $id_dp)
+            ->where('cc.Estado_Interno', $estadoB)
+            ->select('cc.*', 'b.*', 'u.name as nombre_usuario', 'o.Oficina as nombre_oficina'))
+            ->simplePaginate(50);
+
+        // Pestaña: Habilitados sin envío
+        $contratosC = $filtrar(DB::table('contratos as cc')
+            ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
+            ->leftJoin('users as u', 'cc.id_user', '=', 'u.id')
+            ->leftJoin('oficinas as o', 'cc.Oficina', '=', 'o.id')
+            ->where('cc.Id_Dp', $id_dp)
+            ->where('cc.Estado_Interno', $estadoC)
+            ->select('cc.*', 'b.*', 'u.name as nombre_usuario', 'o.Oficina as nombre_oficina')
+            ->orderBy('cc.Id', 'DESC'))
+            ->simplePaginate(100);
+
+        // Pestaña: Documentos Aprobados
+        $contratosD = $filtrar(DB::table('contratos as cc')
+            ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
+            ->leftJoin('users as u', 'cc.id_user', '=', 'u.id')
+            ->leftJoin('oficinas as o', 'cc.Oficina', '=', 'o.id')
+            ->where('cc.Id_Dp', $id_dp)
+            ->where(function ($q) use ($estadoD, $estadoF, $estadoG) {
+                $q->whereIn('cc.Estado_Interno', [$estadoD, $estadoF, $estadoG]);
+            })
+            ->select('cc.*', 'b.*', 'u.name as nombre_usuario', 'o.Oficina as nombre_oficina'))
+            ->simplePaginate(50);
+
+        // Pestaña: Para Contratación
+        $contratosF = $filtrar(DB::table('contratos as cc')
+            ->join('base_datos as b', 'cc.No_Documento', '=', 'b.Documento')
+            ->leftJoin('users as u', 'cc.id_user', '=', 'u.id')
+            ->leftJoin('oficinas as o', 'cc.Oficina', '=', 'o.id')
+            ->where('cc.Id_Dp', $id_dp)
+            ->whereIn('cc.Estado_Interno', [$estadoH, $estadoI, $estadoJ, $estadoK])
+            ->select('cc.*', 'b.*', 'u.name as nombre_usuario', 'o.Oficina as nombre_oficina'))
+            ->simplePaginate(50);
+
+        // Pestaña: En trámite
+        $contratosT = Contrato::from('contratos as c')
+            ->join('base_datos as b', 'b.Documento', '=', 'c.No_Documento')
+            ->leftJoin('oficinas as o', 'c.Oficina', '=', 'o.id')
+            ->whereBetween('c.id_estado', [16, 32])
+            ->whereNotIn('c.id_estado', [23, 32])
+            ->when($buscar, function ($q) use ($buscar) {
+                $q->where(function ($sub) use ($buscar) {
+                    $sub->where('b.Nombre', 'like', "%{$buscar}%")
+                        ->orWhere('b.Documento', 'like', "%{$buscar}%");
+                });
+            })
+            ->select('c.*', 'b.Nombre', 'o.Oficina as nombre_oficina')
+            ->paginate(15);
+
+        // 🔁 Detectar en qué bandeja está el resultado
+        if ($buscar) {
+            if ($contratos->count() > 0) $tabDestino = 'pendientes';
+            elseif ($contratosB->count() > 0) $tabDestino = 'aprobadas';
+            elseif ($contratosC->count() > 0) $tabDestino = 'devueltas';
+            elseif ($contratosD->count() > 0) $tabDestino = 'enviadas';
+            elseif ($contratosF->count() > 0) $tabDestino = 'contratacion';
+            elseif ($contratosT->count() > 0) $tabDestino = 'todas';
+        }
+
+        return view('contratacion.bandejacontrato', compact(
+            'contratos', 'contratosB', 'contratosC', 'contratosD', 'contratosF', 'contratosT',
+            'perfil', 'recordatoriosHoy', 'tabDestino'
+        ))->with('i', (request()->input('page', 1) - 1) * 100);
     }
     
 
-
-    public function solicitudCDP(Request $request)
+        public function solicitudCDP(Request $request)
         {
-            $id = $request->input('id');
+            $idContrato = $request->input('id');
 
-            // Opción A: con Eloquent
-            Contrato::where('Id', $id)
-                    ->update(['Estado' => 'Solicitud CDP']);
+            // Obtener estado destino desde tabla Cambio_estado (puedes ajustar la lógica según tu estructura)
+            $idEstadoActual = DB::table('contratos')->where('Id', $idContrato)->value('id_estado');
+            $estadoDestinoId = DB::table('Cambio_estado')->where('id', $idEstadoActual)->value('pos_estado');
 
-            // Opción B: con Query Builder
-            // \DB::table('contrato')->where('Id', $id)->update(['Estado' => 'Solicitud CDP']);
+            $idnuevoestado = DB::table('Cambio_estado')->where('id', $estadoDestinoId)->first();
+
+            if ($idnuevoestado) {
+                $contrato = \App\Models\Contrato::find($idContrato);
+                if ($contrato) {
+                    $contrato->Estado = $idnuevoestado->EstadoUsuario ?? 'Solicitud CDP';
+                    $contrato->Estado_interno = $idnuevoestado->EstadoInterno ?? 'Solicitud CDP';
+                    $contrato->id_estado = $idnuevoestado->id;
+                    $contrato->save(); // 🔥 dispara observer y bitácora
+                }
+            }
 
             return response()->json([
                 'success' => true,
@@ -132,16 +191,19 @@ class ContratacionController extends Controller
             ]);
         }
 
-    public function verDoccontratos(Request $request)
-        {
- 
-            $idContrato = $request->idContrato;
 
+    public function verDoccontratos(Request $request)
+        { 
+            $idUser = auth()->user()->id;
+                    
+            $perfiUser = DB::table('UserPerfil') ->where('idUser', $idUser) ->where('idPerfil', '!=', 2) ->pluck('idPerfil')  ->toArray();       
+            $perfil = $perfiUser[0] ; 
+            $idContrato = $request->idContrato;
             $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('Estado'); 
     
             $tipos = [3]; 
             $estadoLow = strtolower($estadoContrato);        // Llevamos todo a minúsculas para comparar 
-            if ($estadoLow === 'firma hoja de vida' || $estadoLow === 'documentos aprobados'|| $estadoLow === 'hoja de vida enviada') { $tipos[] = 5; } 
+            if ($estadoLow === 'firma hoja de vida' || $estadoLow === 'documentos aprobados'|| $estadoLow === 'hoja de vida enviada'|| $estadoLow === 'hoja de vida aprobada') { $tipos[] = 5; } 
             $inLista = implode(',', $tipos);
  
             $datos = DB::select("SELECT f.Id
@@ -163,10 +225,10 @@ class ContratacionController extends Controller
                     where b.Id = $idContrato  
                     and a.tipo IN ($inLista)
             ) c on f.Id = c.Id
-            order by f.tipo asc");
+            order by f.orden asc ");
  
 
-            return view('tablaDocJuridica', compact('datos','estadoContrato'));
+            return view('tablaDocJuridica', compact('datos','estadoContrato','perfil'));
         }
 
 
@@ -485,36 +547,147 @@ class ContratacionController extends Controller
                 abort(404, 'Contrato no encontrado');
             }
     
-            return view('formatos.Concejo.notificacion', compact('datosPdf'));
+            return view('formatos.Concejo.Fichatecnica', compact('datosPdf'));
         }
 
 
-public function documentosContrato(Request $request)
-    {
-         
-        $idContrato = $request->idContrato; 
+        public function ficha($id)
+        {
+            $datosPdf = DB::table('generacion_contratos')->where('Id', $id)->first();
+       
+            if (!$datosPdf) {
+                abort(404, 'Contrato no encontrado');
+            }
+    
+            return view('formatos.Concejo.Fichatecnica', compact('datosPdf'));
+        }
 
-        $datos = DB::select("SELECT f.Id
-        ,ca.Ruta
-        ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
-        ,ca.Observacion
-        ,upper(f.Nombre) Nombre,f.tipo
-        ,1 as idCuota
-        ,$idContrato as idContrato 
-        FROM Formatos f 
-		Left JOIN (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
-        left join ( select distinct a.Id, b.Nivel
-                from Formatos a
-                inner join Contratos b
-                on a.Id_Dp = b.Id_Dp 
-                where b.Id = $idContrato   
-        ) c on f.Id = c.Id
-		where tipo IN (3,5,6)
-        order by f.id asc"); 
-        
-        return view('Contratacion.tablaDocContratos', compact('datos'));
+
+        public function DocEquivalente($id)
+        {
+            $datosPdf = DB::table('bandeja_cuentas')->where('Id', $id)->first();
+       
+            if (!$datosPdf) {
+                abort(404, 'Contrato no encontrado');
+            }
+    
+            return view('formatos.Concejo.DocEquivalente', compact('datosPdf'));
+        }
+
+
+        public function documentosContrato(Request $request)
+        {
+            
+            $idContrato = $request->idContrato; 
+            $estadoContrato = DB::table('contratos')->where('id', $idContrato)->value('Estado_interno'); 
+            $datos = DB::select("SELECT f.Id
+            ,ca.Ruta
+            ,CASE WHEN ESTADO IS NULL THEN  (case when  f.Opcional=1  then '(SI APLICA)' else upper(ca.Estado) end)   else Estado end AS Estado
+            ,ca.Observacion
+            ,upper(f.Nombre) Nombre,f.tipo
+            ,1 as idCuota
+            ,$idContrato as idContrato 
+            FROM Formatos f 
+            Left JOIN (select * from Cargue_Archivo ca WHERE ca.Id_contrato=$idContrato  AND Estado != 'ANULADO')ca ON f.Id = ca.Id_formato
+            left join ( select distinct a.Id, b.Nivel
+                    from Formatos a
+                    inner join Contratos b
+                    on a.Id_Dp = b.Id_Dp 
+                    where b.Id = $idContrato   
+            ) c on f.Id = c.Id
+            where tipo IN (3,5,6)
+            order by f.id asc"); 
+            
+            return view('Contratacion.tablaDocContratos', compact('datos','estadoContrato'));
+        }
+
+ 
+ public function descargarZip($idContrato, $idCuota, $tipo)
+{
+    // Obtener el número de contrato
+    $contrato = DB::table('contratos')
+        ->select('Num_Contrato')
+        ->where('id', $idContrato)
+        ->first();
+
+    $numContrato = $contrato->Num_Contrato ?? 'sin_numero';
+
+    // Obtener archivos según el tipo de descarga
+    $archivos = DB::table('Cargue_Archivo as ca')
+        ->join('Formatos as f', 'ca.Id_formato', '=', 'f.Id')
+        ->where('ca.Id_contrato', $idContrato)
+        ->where('f.descarga', $tipo)
+        ->where(function ($q) use ($idCuota) {
+            $q->where('ca.id_cuota', $idCuota)
+              ->orWhereNull('ca.id_cuota');
+        })
+        ->where('ca.Estado', '!=', 'ANULADO')
+        ->select('ca.Ruta', 'f.Nombre')
+        ->get();
+
+    if ($archivos->isEmpty()) {
+        return back()->with('error', 'No se encontraron archivos para descargar.');
     }
 
+    $zip = new ZipArchive();
+    switch ($tipo) {
+        case 1:
+            $nombreZip = "Anexos_Contrato_{$numContrato}.zip";
+            break;
+        case 2:
+            $nombreZip = "Documentos_Contrato_{$numContrato}.zip";
+            break;
+        case 3:
+            $nombreZip = "Minutas_Contrato_{$numContrato}.zip";
+            break;
+        default:
+            $nombreZip = "Contrato_{$idContrato}_cuota_{$idCuota}.zip";
+            break;
+    }
+
+    $rutaZip = storage_path("app/public/tmp/$nombreZip");
+
+    // Asegurar carpeta y limpiar anterior
+    Storage::makeDirectory('public/tmp');
+    if (file_exists($rutaZip)) {
+        unlink($rutaZip);
+    }
+
+    if ($zip->open($rutaZip, ZipArchive::CREATE) !== true) {
+        return back()->with('error', 'No se pudo crear el archivo ZIP.');
+    }
+
+    foreach ($archivos as $archivo) {
+        $rutaFisica = public_path(str_replace('https://cuentafacil.co/', '', $archivo->Ruta));
+        if (file_exists($rutaFisica)) {
+            $nombreLimpio = self::limpiarNombre($archivo->Nombre) . '.pdf';
+            $zip->addFile($rutaFisica, $nombreLimpio);
+        }
+    }
+
+    $zip->close();
+
+    return response()->download($rutaZip)->deleteFileAfterSend(true);
+}
+
+public static function limpiarNombre($cadena)
+{
+    // Reemplazo manual de tildes comunes (mejor control que iconv solo)
+    $acentos = [
+        'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U',
+        'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
+        'Ñ' => 'N', 'ñ' => 'n'
+    ];
+    $cadena = strtr($cadena, $acentos);
+
+    // Luego usar iconv para otros casos
+    $cadena = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $cadena);
+
+    // Reemplazar caracteres no permitidos
+    $cadena = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $cadena);
+    $cadena = preg_replace('/_+/', '_', $cadena); // quitar múltiples guiones bajos
+    return trim($cadena, '_');
+}
 }
 
   

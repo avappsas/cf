@@ -24,5 +24,6 @@ class Interventor extends Model
         'Estado',
         'Año',
         'id_dp',
+        'whatsapp_notificacion'
     ];
 }

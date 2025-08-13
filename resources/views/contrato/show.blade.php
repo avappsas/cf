@@ -130,9 +130,15 @@
                                             <th><b><i class="fas fa-hand-holding-usd"></i> Valor Mensual:</b></th>
                                               <td>${{ number_format($contrato->Valor_Mensual, 0, ',', '.') }}</td> 
                                         </tr>
-                                      
+
                                     </tbody>
-                                </table>
+                                </table> 
+                                        <div class="col-auto d-flex flex-column align-items-center">
+                                            <button type="button" class="btn btn-link text-decoration-none" onclick="btnAbrirModalCarguecontrato({{ $contrato->Id }})">
+                                                <i class="fa-solid fa-upload fa-2x"></i>
+                                                <div>Ver Documentos</div>
+                                            </button>
+                                        </div> 
                             </div>
                         </div>
                     </div>
@@ -140,4 +146,126 @@
             </div>
         </div>
     </section>
+
+
+
+   {{-- modal para cargar documentos cuotas --}}
+
+    <div class="modal fade" id="modalDocUploadCuota" tabindex="-1" role="dialog" aria-labelledby="mediumModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl" role="document" style="max-width: 70%;">
+            <div class="modal-content">
+    {{-- Botón Cerrar en la parte superior derecha --}} 
+                <div class="modal-header" style="background: linear-gradient(30deg, rgba(201,251,74,1) 12%, rgba(86,140,29,1) 71%);
+                                background-repeat: no-repeat;
+                                color: white;
+                                font-family: 'Mallanna';
+                                font-size: 17px;">
+                    <button type="button" class="close" data-bs-dismiss="modal" aria-label="Cerrar" style="font-size: 1.5rem; color: white">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body" id="modalDocUploadCuota"><div class="card">
+                    <div class="card-header">
+                            <div style="display: flex; justify-content: space-between; align-items: center;"> 
+                                <span id="card_title"> 
+                                </span> 
+                                <div class="float-right">
+                                    <i class="fa fa-fw fa-file-contract"></i> 
+                                    {{ __('Documentos') }}
+                                </div>
+                            </div>
+                        </div>
+                        @if ($message = Session::get('success'))
+                            <div class="alert alert-success">
+                                <p>{{ $message }}</p>
+                            </div>
+                        @endif
+                    
+                        <div class="card-body">
+                            <div class="form-group" >
+                                <div class="row">
+                                    <div class="table-responsive">
+                                        <div class="table table-striped table-hover" id="tablaDocs">
+
+                                        </div>   
+                                    </div>
+                                    
+                                </div>
+                                <p></p>
+                            </div>
+                        </div>
+                    </div>
+                </div> 
+            </div>
+        </div>
+    </div>
+
+    {{-- modal para ver documentos cuotas --}}
+
+    <div class="modal fade bd-example-modal-xl" id="modalVerDocCuota" tabindex="-1" role="dialog" aria-labelledby="mediumModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl" role="document">
+            <div class="modal-content">
+    {{-- Botón Cerrar en la parte superior derecha --}} 
+                <div class="modal-header" style="background: linear-gradient(30deg, rgba(201,251,74,1) 12%, rgba(86,140,29,1) 71%);
+                                background-repeat: no-repeat;
+                                color: white;
+                                font-family: 'Mallanna';
+                                font-size: 17px;">
+                    <button type="button" class="close" data-bs-dismiss="modal" aria-label="Cerrar" style="font-size: 1.5rem; color: white">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body" id="modalVerDocCuota"><div class="card">
+                    <div class="row">
+                        <embed id="pdfEmbed" src="" type="application/pdf" width="100%" height="800px">
+                    </div>
+                </div>
+                
+                <div class="modal-footer"  >
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+@section('js')
+<script> 
+
+ const dataToken = document
+      .querySelector('meta[name="csrf-token"]')
+      .getAttribute('content');
+
+
+function AbrirPDFM2(Ruta){
+    console.log(Ruta)
+    document.getElementById('pdfEmbed').src = Ruta;
+    $('#modalVerDocCuota').modal('show'); 
+}
+ 
+ 
+
+function btnAbrirModalCarguecontrato(idContrato){
+    
+    $.ajax({
+        url: ('/cargueContrato'),
+        type:'get',
+        data: {_token:dataToken, idContrato:idContrato},
+        success: function(data) {
+            $('#tablaDocs').empty();
+            $('#tablaDocs').html(data);
+            // console.log(data);
+            $('#modalDocUploadCuota').modal('show');
+            
+        }
+    });
+}
+
+
+</script>
 @endsection
+
+
+@endsection
+

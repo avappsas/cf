@@ -33,4 +33,10 @@ return [
     'google_docs' => [
     'webapp_url' => env('GOOGLE_DOCS_WEBAPP_URL'),
     ],
+
+    'whatsapp' => [
+    'token' => env('WHATSAPP_TOKEN'),
+    'phone_id' => env('WHATSAPP_PHONE_ID'),
+    ],
+
 ];

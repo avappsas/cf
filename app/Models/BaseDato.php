@@ -34,7 +34,9 @@ class BaseDato extends Model
     
     static $rules = [
     ];
-
+    protected $casts = [
+        'Fecha_Nacimiento' => 'date',
+    ];
     protected $perPage = 20;
 
     /**
@@ -42,8 +44,14 @@ class BaseDato extends Model
      *
      * @var array
      */
-    protected $fillable = ['id','Tipo_Doc','Documento','Nombre','Fecha_Nacimiento','Telefono','Celular','Direccion','Referido','Observacion','Profesion','Correo','Dv','correo_secop','Nivel_estudios','Perfil','Genero','firma'];
 
+ 
+    protected $fillable = [
+        'Tipo_Doc','Documento','Nombre','Fecha_Nacimiento','Telefono','Celular',
+        'Direccion','Referido','Observacion','Profesion','Correo','Dv',
+        'correo_secop','Nivel_estudios','Perfil','Genero','firma','Municipio','RST',
+        'actividad_principal','actividad_secundaria','actividad_contractual','renta','iva'
+    ];
 
 
 }

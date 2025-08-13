@@ -3,82 +3,120 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use DB;
-use DataTables;
-use FFMpeg;
-use FFMpeg\FFProbe;
-use Illuminate\Support\Facades\Storage;
-use GuzzleHttp\Client;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Log;
+use App\Notifications\EstadoNotificacion;
+use App\Models\NotificacionLog;
+use App\Notifications\Destinatarios\InternoNotificable;
+use App\Notifications\Destinatarios\UsuarioNotificable;
 
-/**
- * Class MsmWhatsAppController
- * @package App\Http\Controllers
- */
 class NotificacionesController extends Controller
 {
-    
-    public function sendWS(Request $request){
-        // print_r($request->mensaje);die();
-        $contacto = $request->contacto;
-        $tipo = $request->tipo;
 
-        $url = 'https://graph.facebook.com/v15.0/104812412538802/messages';
-        if ($tipo == 1) {
-            $mensaje = $request->mensaje;
-            $data = '{
-                "messaging_product": "whatsapp",
-                "recipient_type": "individual",
-                "to": "' .$contacto .'",
-                "type": "text",
-                "text": {
-                    "body": "' .$mensaje .'"
-                }
-                }';
-        } elseif($tipo == 2) {  
-            $mensaje = $request->mensaje;
-            $data = '{
-                "messaging_product": "whatsapp",
-                "recipient_type": "individual",
-                "to": "' .$contacto .'",
-                "type": "template",
-                "template": {
-                    "name": "plantilla_3_2 ",
-                    "language": {
-                        "code": "es_ES"
-                    },
-                    "components": [
-                        {
-                            "type": "header",
-                            "parameters": [
-                                {
-                                    "type": "image",
-                                    "image": {
-                                        "id": "617796533758621"
-                                    }
-                                }
-                            ]
-                        },  {"type": "body","parameters": [{"type": "text","text": "Pepito Perz"},
-                            {"type": "text","text": "Desde Avapp e Inteligencia Electoral te queremos dar la bienvenida al equipo de testigos electorales. Recuerda que este sera nuestro canal de informacion y registro este proximo 29 de octubre."},
-                            {"type": "text","text": "¿Deseas ver el video tutorial?"}]}
-                    ]
-                }
-            }';
+    public function notificarInterno(Request $request)
+    {
+        $idContrato = $request->input('idContrato');
+        $idCuota = $request->input('idCuota');
+        $estado = (object) $request->input('estadoActual');
+
+        if (empty($estado->EstadoInterno)) {
+            Log::warning("⚠️ EstadoInterno vacío en notificarInterno para contrato $idContrato");
+            return response('Estado interno no válido', 400);
         }
-        
-        
 
-        $headers = [
-            'Authorization: Bearer EAAXIz9r2264BAMMoMlMquMDVAflMJm1xZAu1MAhu64sIhzLvZBnUTV6HdZBdDgU2uMj73sMC3odtYZC60HY3XmLOq1AflLOROWhqY7shJe7pgZA50Bzkl4DiOHZBnQEx6PFZAxvKb03FbI9E6bLfOyddBEz05nQAyThiEZBfIKISoiRjUkvZBtZC9emhSCp6C0IBjP9xN5ZAoJqfwZDZD',
-            'Content-Type: application/json'
-        ];
+        $telefono = null;
+        $correo = null;
 
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        $response = curl_exec($ch);
-        curl_close($ch);
-        print_r($response);die();
+        if ($estado->notificarInterno == 1) {
+            $notificado = DB::table('Contratos as c')
+                ->select('i.whatsapp_notificacion', 'i.CORREO')
+                ->join('Interventores as i', 'i.Id', '=', 'c.Interventor')
+                ->where('c.id', $idContrato)
+                ->first();
+
+            if ($notificado) {
+                $telefono = $notificado->whatsapp_notificacion ?? $telefono;
+                $correo = $notificado->CORREO;
+            }
+        } else {
+            $telefono = $estado->notificarInterno;
+        }
+
+        $interno = new InternoNotificable($telefono, $correo);
+
+        // 🧠 Generar mensaje según idCuota
+        $mensaje = ($idCuota == 1)
+            ? 'El contrato fue actualizado internamente: ' . $estado->EstadoInterno
+            : 'La cuenta fue actualizada internamente: ' . $estado->EstadoInterno;
+
+        $interno->notify(new EstadoNotificacion('contrato', [
+            'mensaje' => $mensaje,
+            'url' => "/contratos/$idContrato"
+        ]));
+
+        NotificacionLog::create([
+            'tipo' => 'contrato',
+            'destinatario' => '',
+            'telefono' => $telefono,
+            'correo' => $correo,
+            'mensaje' => $mensaje,
+            'canal' => 'whatsapp',
+            'contrato_id' => $idContrato,
+        ]);
+
+        return response('Notificación interna enviada ✅', 200);
     }
+
+
+
+    public function notificarUsuario(Request $request)
+    {
+        $idContrato = $request->input('idContrato');
+        $idCuota = $request->input('idCuota');
+        $documentoContratista = $request->input('documentoContratista');
+        $estado = (object) $request->input('estadoActual'); 
+
+        if (empty($estado->EstadoUsuario)) {
+            Log::warning("⚠️ EstadoUsuario vacío en notificarUsuario para contrato $idContrato");
+            return response('Estado usuario no válido', 400);
+        }
+
+        $datosUsuario = DB::table('Base_Datos')
+            ->where('Documento', trim($documentoContratista))
+            ->first();
+
+        if (!$datosUsuario || !$datosUsuario->Celular) {
+            return response('Usuario no encontrado o sin celular', 204);
+        }
+
+        $usuario = new UsuarioNotificable(
+            $datosUsuario->Celular,
+            $datosUsuario->Nombre ?? 'Usuario',
+            $datosUsuario->Correo 
+        );
+ 
+        // ✅ Generar mensaje según idCuota
+        $mensaje = ($idCuota == 1)
+            ? 'CONCEJO DE CALI INFORMA: ' . $estado->EstadoUsuario
+            : 'CONCEJO DE CALI INFORMA: ' . $estado->EstadoUsuario;
+
+        $usuario->notify(new EstadoNotificacion('contrato', [
+            'mensaje' => $mensaje,
+            'url' => "/contratos"
+        ]));
+
+        NotificacionLog::create([
+            'tipo' => 'contrato',
+            'destinatario' => $datosUsuario->Nombre ?? 'Usuario',
+            'telefono' => $datosUsuario->Celular,
+            'correo' => $datosUsuario->Correo,
+            'mensaje' => $mensaje,
+            'canal' => 'whatsapp' . ($datosUsuario->Correo ? '+mail' : ''),
+            'contrato_id' => $idContrato,
+        ]);
+
+        return response('Notificación al usuario enviada ✅', 200);
+    }
+
 }
