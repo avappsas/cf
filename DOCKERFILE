@@ -1,0 +1,26 @@
+# Usar imagen base PHP 8.3 (con Apache por simplicidad)
+FROM php:8.3-apache
+
+# Instalar dependencias de sistema necesarias (ejemplo: Git, ODBC, etc.)
+RUN apt-get update && apt-get install -y \ 
+    git curl unzip gnupg2 unixodbc-dev
+
+# (Opcional) Añadir repositorio Microsoft para ODBC si se va a instalar
+# el controlador oficial (msodbcsql). Ejemplo para Debian/Ubuntu:
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
+    curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list && \
+    apt-get update && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+
+# Instalar extensiones de PHP requeridas (ejemplo: ext-sqlsrv y pdo_sqlsrv vía PECL)
+RUN pecl install sqlsrv pdo_sqlsrv && docker-php-ext-enable sqlsrv pdo_sqlsrv  [oai_citation:11‡forums.docker.com](https://forums.docker.com/t/newbie-question-trying-to-create-an-image-with-apache-php-8-and-mssql/135083#:~:text=RUN%20apt,install%20sqlsrv%20pdo_sqlsrv%20%26%26)
+
+# Copiar el código de la aplicación
+WORKDIR /var/www/html
+COPY . . 
+
+# Instalar dependencias de PHP y generar assets (si aplica)
+RUN composer install --no-dev --optimize-autoloader && php artisan storage:link
+
+# Exponer el puerto y definir comando de arranque
+EXPOSE 8000
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
