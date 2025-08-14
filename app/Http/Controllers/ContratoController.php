@@ -468,17 +468,25 @@ public function reenviarRecordatorio(Request $request, $id)
      * @return \Illuminate\Http\Response
      */
  
-    public function update(Request $request, Contrato $contrato)
-    {
-        request()->validate(Contrato::$rules);
- 
-        $contrato->update($request->all());
-
-        
- 
-        $doc = $contrato->No_Documento;
-        return redirect()->away("https://cuentafacil.co/vercontratos/{$doc}");
-    }
+     public function update(Request $request, Contrato $contrato)
+     {
+         $request->validate(Contrato::$rules);
+     
+         $contrato->update($request->all());
+     
+         $doc = $contrato->No_Documento;
+     
+         $host = request()->getHost();
+         $port = request()->getPort();
+     
+         // Si es local (127.0.0.1) redirige con puerto
+         if ($host === '127.0.0.1') {
+             return redirect()->away("http://127.0.0.1:{$port}/vercontratos/{$doc}");
+         }
+     
+         // Producción
+         return redirect()->away("https://cuentafacil.co/vercontratos/{$doc}");
+     }
 
     /**
      * @param int $id
