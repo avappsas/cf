@@ -1,0 +1,15 @@
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\bin\Debug\net8.0\WordToPdfConsole.exe
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\bin\Debug\net8.0\WordToPdfConsole.deps.json
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\bin\Debug\net8.0\WordToPdfConsole.runtimeconfig.json
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\bin\Debug\net8.0\WordToPdfConsole.dll
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\bin\Debug\net8.0\WordToPdfConsole.pdb
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\obj\Debug\net8.0\WordToPdfConsole.GeneratedMSBuildEditorConfig.editorconfig
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\obj\Debug\net8.0\WordToPdfConsole.AssemblyInfoInputs.cache
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\obj\Debug\net8.0\WordToPdfConsole.AssemblyInfo.cs
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\obj\Debug\net8.0\WordToPdfConsole.csproj.CoreCompileInputs.cache
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\obj\Debug\net8.0\WordToPdfConsole.sourcelink.json
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\obj\Debug\net8.0\WordToPdfConsole.dll
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\obj\Debug\net8.0\refint\WordToPdfConsole.dll
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\obj\Debug\net8.0\WordToPdfConsole.pdb
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\obj\Debug\net8.0\WordToPdfConsole.genruntimeconfig.cache
+C:\laragon\www\cf\WordToPdfConsole\WordToPdfConsole\obj\Debug\net8.0\ref\WordToPdfConsole.dll

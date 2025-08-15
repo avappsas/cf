@@ -1,0 +1,2 @@
+C:\laragon\www\cf\WordToPdfConsole\bin\WordToPdfConsole.pdb
+C:\laragon\www\cf\WordToPdfConsole\bin\WordToPdfConsole.exe
