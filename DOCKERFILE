@@ -1,22 +1,31 @@
-# ---- Stage 1: Build frontend assets ----
+# ---------- Stage 1: Frontend build (Laravel Mix) ----------
     FROM node:20-alpine AS nodebuild
     WORKDIR /app
+    
+    # Instalar dependencias de node aprovechando cache
     COPY package.json package-lock.json* yarn.lock* ./
     RUN if [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
         elif [ -f package-lock.json ]; then npm ci; \
         else npm i; fi
+    
+    # Copiar código para compilar assets
     COPY . .
-    # Si usas Laravel Mix:
     RUN npm run production || npm run prod || true
     
-    # ---- Stage 2: PHP 8.2 + SQLSRV ----
+    # ---------- Stage 2: PHP 8.2 + SQLSRV ----------
     FROM php:8.2-cli-bullseye
+    WORKDIR /app
     
-    # Dependencias de sistema
+    # Paquetes del sistema (ODBC, zip, git, etc.)
     RUN apt-get update && apt-get install -y \
         gnupg2 apt-transport-https curl ca-certificates \
         unixodbc-dev libzip-dev zip unzip git \
+        libpng-dev libjpeg-dev libfreetype6-dev \
         && rm -rf /var/lib/apt/lists/*
+    
+    # Librerías para GD (útil para dompdf/mpdf)
+    RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+     && docker-php-ext-install gd bcmath pcntl zip
     
     # Repositorio Microsoft + msodbcsql18
     RUN curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft.gpg \
@@ -26,9 +35,6 @@
      && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
      && rm -rf /var/lib/apt/lists/*
     
-    # Extensiones PHP
-    RUN docker-php-ext-install pcntl bcmath zip
-    
     # sqlsrv y pdo_sqlsrv (PECL)
     RUN pecl install sqlsrv pdo_sqlsrv \
      && docker-php-ext-enable sqlsrv pdo_sqlsrv
@@ -36,29 +42,27 @@
     # Composer
     COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
     
-    WORKDIR /app
-    
-    # Instala dependencias PHP (aprovecha cache)
+    # Instalar dependencias PHP (primero composer.* para cache)
     COPY composer.json composer.lock* ./
     RUN composer install --no-dev --prefer-dist --no-interaction --no-progress || true
     
-    # Copia código
+    # Copiar el resto del código
     COPY . .
     
-    # Copia assets compilados
+    # Copiar assets compilados
     COPY --from=nodebuild /app/public /app/public
     
-    # Preparar Laravel (si no hay .env en build, crea uno temporal)
+    # Preparar Laravel (claves y caches; si no hay .env, usa el example)
     RUN php -r "file_exists('.env') || copy('.env.example', '.env');" \
      && php artisan key:generate --force || true \
      && php artisan config:cache || true \
      && php artisan route:cache || true \
      && php artisan view:cache || true
     
-    # Railway usa $PORT
+    # Railway expone $PORT
     ENV PORT=8080
     EXPOSE 8080
     
-    # Arranque: migraciones (best-effort) y servidor embebido
+    # Al iniciar: intenta migrar y arranca el server embebido
     CMD php artisan migrate --force || true && php artisan serve --host 0.0.0.0 --port $PORT
     
