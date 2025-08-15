@@ -1,26 +1,63 @@
-# Usar imagen base PHP 8.3 (con Apache por simplicidad)
-FROM php:8.3-apache
-
-# Instalar dependencias de sistema necesarias (ejemplo: Git, ODBC, etc.)
-RUN apt-get update && apt-get install -y \ 
-    git curl unzip gnupg2 unixodbc-dev
-
-# (Opcional) Añadir repositorio Microsoft para ODBC si se va a instalar
-# el controlador oficial (msodbcsql). Ejemplo para Debian/Ubuntu:
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
-    curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list && \
-    apt-get update && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
-
-# Instalar extensiones de PHP requeridas (ejemplo: ext-sqlsrv y pdo_sqlsrv vía PECL)
-RUN pecl install sqlsrv pdo_sqlsrv && docker-php-ext-enable sqlsrv pdo_sqlsrv  [oai_citation:11‡forums.docker.com](https://forums.docker.com/t/newbie-question-trying-to-create-an-image-with-apache-php-8-and-mssql/135083#:~:text=RUN%20apt,install%20sqlsrv%20pdo_sqlsrv%20%26%26)
-
-# Copiar el código de la aplicación
-WORKDIR /var/www/html
-COPY . . 
-
-# Instalar dependencias de PHP y generar assets (si aplica)
-RUN composer install --no-dev --optimize-autoloader && php artisan storage:link
-
-# Exponer el puerto y definir comando de arranque
-EXPOSE 8000
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+# ---- Stage 1: Build assets ----
+    FROM node:20-alpine AS nodebuild
+    WORKDIR /app
+    COPY package.json package-lock.json* yarn.lock* ./
+    RUN if [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
+        elif [ -f package-lock.json ]; then npm ci; \
+        else npm i; fi
+    COPY . .
+    # Si usas Laravel Mix (package.json lo indica), construye:
+    RUN npm run production || npm run prod || true
+    
+    # ---- Stage 2: PHP + SQLSRV ----
+    FROM php:8.3-cli-bullseye
+    
+    # Dependencias del sistema
+    RUN apt-get update && apt-get install -y \
+        gnupg2 apt-transport-https curl ca-certificates \
+        unixodbc-dev libzip-dev zip unzip git \
+        && rm -rf /var/lib/apt/lists/*
+    
+    # Repositorio de Microsoft y msodbcsql18
+    RUN curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft.gpg \
+     && echo "deb [signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/11/prod bullseye main" \
+        > /etc/apt/sources.list.d/mssql-release.list \
+     && apt-get update \
+     && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
+     && rm -rf /var/lib/apt/lists/*
+    
+    # Extensiones PHP necesarias
+    RUN docker-php-ext-install pcntl bcmath zip
+    
+    # sqlsrv y pdo_sqlsrv (vía PECL)
+    RUN pecl install sqlsrv pdo_sqlsrv \
+     && docker-php-ext-enable sqlsrv pdo_sqlsrv
+    
+    # Composer
+    COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+    
+    WORKDIR /app
+    
+    # Copiamos composer.* primero para aprovechar la cache
+    COPY composer.json composer.lock* ./
+    RUN composer install --no-dev --prefer-dist --no-interaction --no-progress || true
+    
+    # Copiamos el resto del código
+    COPY . .
+    
+    # Copiamos assets ya compilados
+    COPY --from=nodebuild /app/public /app/public
+    
+    # Optimización Laravel
+    RUN php -r "file_exists('.env') || copy('.env.example', '.env');" \
+     && php artisan key:generate --force || true \
+     && php artisan config:cache || true \
+     && php artisan route:cache || true \
+     && php artisan view:cache || true
+    
+    # Railway expone $PORT. Usaremos el servidor embebido de PHP para simplicidad.
+    ENV PORT=8080
+    EXPOSE 8080
+    
+    CMD php artisan migrate --force || true && php artisan serve --host 0.0.0.0 --port $PORT
+    
