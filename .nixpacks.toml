@@ -1,0 +1,3 @@
+# Deshabilitar Nixpacks - usar Dockerfile en su lugar
+[variables]
+DISABLE_NIXPACKS = "true"
