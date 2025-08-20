@@ -1,143 +1,67 @@
-# ---- Stage 1: Build assets with Vite ----
-    FROM node:20-alpine AS nodebuild
-    WORKDIR /app
-    
-    # Copiar archivos de dependencias
-    COPY package.json package-lock.json* ./
-    
-    # Instalar dependencias
-    RUN npm ci
-    
-    # Copiar el código fuente
-    COPY . .
-    
-    # Construir assets con Vite
-    RUN npm run build
-    
-    # ---- Stage 2: PHP con SQL Server ----
-    FROM php:8.3-cli-bullseye
-    
-    # Variables de entorno para SQL Server
-    ENV ACCEPT_EULA=Y
-    ENV DEBIAN_FRONTEND=noninteractive
-    
-    # Dependencias del sistema
-    RUN apt-get update && apt-get install -y \
-        gnupg2 \
-        apt-transport-https \
-        curl \
-        ca-certificates \
-        unixodbc-dev \
-        libzip-dev \
-        zip \
-        unzip \
-        git \
-        supervisor \
-        nginx \
-        && rm -rf /var/lib/apt/lists/*
-    
-    # Repositorio de Microsoft para SQL Server drivers
-    RUN curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft.gpg \
-        && echo "deb [signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/11/prod bullseye main" \
-           > /etc/apt/sources.list.d/mssql-release.list
-    
-    # Instalar SQL Server drivers
-    RUN apt-get update \
-        && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
-        && rm -rf /var/lib/apt/lists/*
-    
-    # Instalar extensiones PHP
-    RUN docker-php-ext-install pcntl bcmath zip pdo
-    
-    # Instalar drivers SQL Server para PHP
-    RUN pecl install sqlsrv-5.12.0 pdo_sqlsrv-5.12.0 \
-        && docker-php-ext-enable sqlsrv pdo_sqlsrv
-    
-    # Instalar Composer
-    COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-    
-    # Configurar directorio de trabajo
-    WORKDIR /app
-    
-    # Copiar archivos de dependencias PHP
-    COPY composer.json composer.lock* ./
-    
-    # Instalar dependencias PHP (sin dev)
-    RUN composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
-    
-    # Copiar el resto del código
-    COPY . .
-    
-    # Copiar assets compilados desde el stage anterior
-    COPY --from=nodebuild /app/public/build /app/public/build
-    
-    # Crear directorios necesarios y establecer permisos
-    RUN mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views \
-        && chown -R www-data:www-data storage bootstrap/cache \
-        && chmod -R 775 storage bootstrap/cache
-    
-    # Configurar Nginx
-    COPY <<EOF /etc/nginx/sites-available/default
-    server {
-        listen 80;
-        root /app/public;
-        index index.php index.html;
-        
-        location / {
-            try_files \$uri \$uri/ /index.php?\$query_string;
-        }
-        
-        location ~ \.php\$ {
-            fastcgi_pass 127.0.0.1:9000;
-            fastcgi_index index.php;
-            fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
-            include fastcgi_params;
-        }
-        
-        location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg)\$ {
-            expires 1y;
-            add_header Cache-Control "public, immutable";
-        }
-    }
-    EOF
-    
-    # Configurar supervisor
-    COPY <<EOF /etc/supervisor/conf.d/laravel.conf
-    [supervisord]
-    nodaemon=true
-    
-    [program:php-fpm]
-    command=php-fpm --nodaemonize
-    autostart=true
-    autorestart=true
-    
-    [program:nginx]
-    command=nginx -g "daemon off;"
-    autostart=true
-    autorestart=true
-    EOF
-    
-    # Script de inicialización
-    COPY <<EOF /app/start.sh
-    #!/bin/bash
-    set -e
-    
-    echo "Verificando conexión a la base de datos..."
-    php artisan tinker --execute="DB::connection()->getPdo();" || echo "Advertencia: No se pudo conectar a la BD"
-    
-    echo "Optimizando aplicación..."
-    php artisan config:cache
-    php artisan route:cache
-    php artisan view:cache
-    
-    echo "Iniciando servicios..."
-    exec /usr/bin/supervisord -c /etc/supervisor/conf.d/laravel.conf
-    EOF
-    
-    RUN chmod +x /app/start.sh
-    
-    # Railway usa la variable PORT
-    ENV PORT=80
-    EXPOSE 80
-    
-    CMD ["/app/start.sh"]
+# Build stage for Node.js assets
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install Node dependencies
+RUN npm ci
+
+# Copy source code (excluding .NET files)
+COPY . .
+RUN rm -rf WordToPdfConsole/ || true
+RUN rm -f *.csproj *.sln global.json || true
+
+# Build assets with Vite
+RUN npm run build
+
+# Production stage for PHP
+FROM php:8.3-cli-bullseye
+
+# Set labels to indicate this is a PHP project
+LABEL project.type="php-laravel"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gnupg2 curl ca-certificates unixodbc-dev libzip-dev zip git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Microsoft SQL Server drivers
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/11/prod bullseye main" \
+       > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PHP extensions
+RUN docker-php-ext-install pcntl bcmath zip pdo \
+    && pecl install sqlsrv pdo_sqlsrv \
+    && docker-php-ext-enable sqlsrv pdo_sqlsrv
+
+# Install Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /app
+
+# Copy PHP dependency files first (for Docker layer caching)
+COPY composer*.json ./
+
+# Install PHP dependencies
+RUN composer install --no-dev --optimize-autoloader
+
+# Copy application code (excluding .NET files)
+COPY . .
+RUN rm -rf WordToPdfConsole/ || true
+RUN rm -f *.csproj *.sln global.json || true
+
+# Copy built assets from Node stage
+COPY --from=build /app/public/build ./public/build
+
+# Set proper permissions
+RUN mkdir -p storage/logs storage/framework/{cache,sessions,views} \
+    && chmod -R 775 storage bootstrap/cache
+
+# Railway provides PORT environment variable
+CMD php artisan serve --host=0.0.0.0 --port=$PORT

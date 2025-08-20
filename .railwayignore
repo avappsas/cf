@@ -1,0 +1,15 @@
+# Ignorar archivos .NET
+*.csproj
+*.sln
+global.json
+WordToPdfConsole/
+bin/
+obj/
+
+# Otros archivos que no necesita Railway
+.git
+.env
+.env.example
+node_modules/
+tests/
+.phpunit.result.cache
