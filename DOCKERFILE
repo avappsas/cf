@@ -1,68 +1,143 @@
-# ---------- Stage 1: Frontend build (Laravel Mix) ----------
+# ---- Stage 1: Build assets with Vite ----
     FROM node:20-alpine AS nodebuild
     WORKDIR /app
     
-    # Instalar dependencias de node aprovechando cache
-    COPY package.json package-lock.json* yarn.lock* ./
-    RUN if [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
-        elif [ -f package-lock.json ]; then npm ci; \
-        else npm i; fi
+    # Copiar archivos de dependencias
+    COPY package.json package-lock.json* ./
     
-    # Copiar código para compilar assets
+    # Instalar dependencias
+    RUN npm ci
+    
+    # Copiar el código fuente
     COPY . .
-    RUN npm run production || npm run prod || true
     
-    # ---------- Stage 2: PHP 8.2 + SQLSRV ----------
-    FROM php:8.2-cli-bullseye
-    WORKDIR /app
+    # Construir assets con Vite
+    RUN npm run build
     
-    # Paquetes del sistema (ODBC, zip, git, etc.)
+    # ---- Stage 2: PHP con SQL Server ----
+    FROM php:8.3-cli-bullseye
+    
+    # Variables de entorno para SQL Server
+    ENV ACCEPT_EULA=Y
+    ENV DEBIAN_FRONTEND=noninteractive
+    
+    # Dependencias del sistema
     RUN apt-get update && apt-get install -y \
-        gnupg2 apt-transport-https curl ca-certificates \
-        unixodbc-dev libzip-dev zip unzip git \
-        libpng-dev libjpeg-dev libfreetype6-dev \
+        gnupg2 \
+        apt-transport-https \
+        curl \
+        ca-certificates \
+        unixodbc-dev \
+        libzip-dev \
+        zip \
+        unzip \
+        git \
+        supervisor \
+        nginx \
         && rm -rf /var/lib/apt/lists/*
     
-    # Librerías para GD (útil para dompdf/mpdf)
-    RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-     && docker-php-ext-install gd bcmath pcntl zip
-    
-    # Repositorio Microsoft + msodbcsql18
+    # Repositorio de Microsoft para SQL Server drivers
     RUN curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft.gpg \
-     && echo "deb [signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/11/prod bullseye main" \
-        > /etc/apt/sources.list.d/mssql-release.list \
-     && apt-get update \
-     && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
-     && rm -rf /var/lib/apt/lists/*
+        && echo "deb [signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/11/prod bullseye main" \
+           > /etc/apt/sources.list.d/mssql-release.list
     
-    # sqlsrv y pdo_sqlsrv (PECL)
-    RUN pecl install sqlsrv pdo_sqlsrv \
-     && docker-php-ext-enable sqlsrv pdo_sqlsrv
+    # Instalar SQL Server drivers
+    RUN apt-get update \
+        && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
+        && rm -rf /var/lib/apt/lists/*
     
-    # Composer
+    # Instalar extensiones PHP
+    RUN docker-php-ext-install pcntl bcmath zip pdo
+    
+    # Instalar drivers SQL Server para PHP
+    RUN pecl install sqlsrv-5.12.0 pdo_sqlsrv-5.12.0 \
+        && docker-php-ext-enable sqlsrv pdo_sqlsrv
+    
+    # Instalar Composer
     COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
     
-    # Instalar dependencias PHP (primero composer.* para cache)
+    # Configurar directorio de trabajo
+    WORKDIR /app
+    
+    # Copiar archivos de dependencias PHP
     COPY composer.json composer.lock* ./
-    RUN composer install --no-dev --prefer-dist --no-interaction --no-progress || true
+    
+    # Instalar dependencias PHP (sin dev)
+    RUN composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
     
     # Copiar el resto del código
     COPY . .
     
-    # Copiar assets compilados
-    COPY --from=nodebuild /app/public /app/public
+    # Copiar assets compilados desde el stage anterior
+    COPY --from=nodebuild /app/public/build /app/public/build
     
-    # Preparar Laravel (claves y caches; si no hay .env, usa el example)
-    RUN php -r "file_exists('.env') || copy('.env.example', '.env');" \
-     && php artisan key:generate --force || true \
-     && php artisan config:cache || true \
-     && php artisan route:cache || true \
-     && php artisan view:cache || true
+    # Crear directorios necesarios y establecer permisos
+    RUN mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views \
+        && chown -R www-data:www-data storage bootstrap/cache \
+        && chmod -R 775 storage bootstrap/cache
     
-    # Railway expone $PORT
-    ENV PORT=8080
-    EXPOSE 8080
+    # Configurar Nginx
+    COPY <<EOF /etc/nginx/sites-available/default
+    server {
+        listen 80;
+        root /app/public;
+        index index.php index.html;
+        
+        location / {
+            try_files \$uri \$uri/ /index.php?\$query_string;
+        }
+        
+        location ~ \.php\$ {
+            fastcgi_pass 127.0.0.1:9000;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
+            include fastcgi_params;
+        }
+        
+        location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg)\$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+    EOF
     
-    # Al iniciar: intenta migrar y arranca el server embebido
-    CMD php artisan migrate --force || true && php artisan serve --host 0.0.0.0 --port $PORT
+    # Configurar supervisor
+    COPY <<EOF /etc/supervisor/conf.d/laravel.conf
+    [supervisord]
+    nodaemon=true
     
+    [program:php-fpm]
+    command=php-fpm --nodaemonize
+    autostart=true
+    autorestart=true
+    
+    [program:nginx]
+    command=nginx -g "daemon off;"
+    autostart=true
+    autorestart=true
+    EOF
+    
+    # Script de inicialización
+    COPY <<EOF /app/start.sh
+    #!/bin/bash
+    set -e
+    
+    echo "Verificando conexión a la base de datos..."
+    php artisan tinker --execute="DB::connection()->getPdo();" || echo "Advertencia: No se pudo conectar a la BD"
+    
+    echo "Optimizando aplicación..."
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+    
+    echo "Iniciando servicios..."
+    exec /usr/bin/supervisord -c /etc/supervisor/conf.d/laravel.conf
+    EOF
+    
+    RUN chmod +x /app/start.sh
+    
+    # Railway usa la variable PORT
+    ENV PORT=80
+    EXPOSE 80
+    
+    CMD ["/app/start.sh"]

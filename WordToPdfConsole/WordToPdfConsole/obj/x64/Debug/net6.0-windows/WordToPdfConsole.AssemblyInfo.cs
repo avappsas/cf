@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("WordToPdfConsole")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6f114706c84ed6150c97fe422535a6c6571432b7")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+512e76963727e9d5281eb7ee80544c70a810d9a3")]
 [assembly: System.Reflection.AssemblyProductAttribute("WordToPdfConsole")]
 [assembly: System.Reflection.AssemblyTitleAttribute("WordToPdfConsole")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
