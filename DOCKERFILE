@@ -1,93 +1,80 @@
 # =======================
-# Etapa 1: Builder
+# Etapa 1: Composer (vendor)
 # =======================
-FROM ubuntu:22.04 AS builder
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Paquetes base
-RUN apt-get update && apt-get install -y \
-  curl ca-certificates git unzip gnupg2 software-properties-common
-
-# Node 18 (para Laravel Mix)
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
- && apt-get install -y nodejs
-
-# PHP 8.3 CLI + extensiones necesarias para composer/artisan
-RUN add-apt-repository ppa:ondrej/php -y \
- && apt-get update && apt-get install -y \
-    php8.3 php8.3-zip php8.3-mbstring php8.3-xml php8.3-curl
-
-# Composer
-RUN curl -sS https://getcomposer.org/installer -o composer-setup.php \
- && php composer-setup.php --install-dir=/usr/local/bin --filename=composer \
- && rm composer-setup.php
-
+FROM composer:2 AS vendor
 WORKDIR /app
-
-# Instalar dependencias PHP (ignorando requisitos de plataforma para evitar ext-sqlsrv en build)
 COPY composer.json composer.lock ./
-ENV COMPOSER_ALLOW_SUPERUSER=1 COMPOSER_MEMORY_LIMIT=-1
-RUN composer install --no-dev --no-interaction --prefer-dist --no-ansi --no-progress --optimize-autoloader --ignore-platform-reqs
+ENV COMPOSER_ALLOW_SUPERUSER=1 \
+    COMPOSER_MEMORY_LIMIT=-1 \
+    COMPOSER_PROCESS_TIMEOUT=2000 \
+    COMPOSER_MAX_PARALLEL_HTTP=2
+RUN composer install \
+    --no-dev --no-interaction --prefer-dist \
+    --no-ansi --no-progress \
+    --optimize-autoloader \
+    --ignore-platform-reqs \
+    --no-scripts --no-plugins
 
-# Instalar dependencias JS y compilar assets (Laravel Mix)
+# =======================
+# Etapa 2: Frontend (Laravel Mix)
+# =======================
+FROM node:18-bullseye-slim AS frontend
+WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN [ -f package-lock.json ] && npm ci || npm i
-
-# Copiar el proyecto y compilar
 COPY . .
-RUN npm run production || npm run prod || true
-
-# Optimizar caches de Laravel
-RUN php artisan config:clear && php artisan config:cache && php artisan route:cache && php artisan view:cache
-
+RUN npm run production || npm run prod
 
 # =======================
-# Etapa 2: Runtime
+# Etapa 3: Runtime (PHP-FPM 8.2 + Nginx + ODBC18 + sqlsrv/pdo_sqlsrv)
 # =======================
-FROM ubuntu:22.04
-ENV DEBIAN_FRONTEND=noninteractive
+FROM php:8.2-fpm-bookworm
 
-# Paquetes base + Nginx + Supervisor
-RUN apt-get update && apt-get install -y \
-  ca-certificates apt-transport-https gnupg2 software-properties-common \
-  nginx supervisor curl git unzip
+ENV DEBIAN_FRONTEND=noninteractive \
+    MAKEFLAGS=-j1
 
-# PHP 8.3 FPM + extensiones comunes
-RUN add-apt-repository ppa:ondrej/php -y \
- && apt-get update && apt-get install -y \
-    php8.3-fpm php8.3-cli \
-    php8.3-mbstring php8.3-xml php8.3-curl php8.3-zip php8.3-intl php8.3-bcmath php8.3-gd
+# Paquetes base mínimos + Nginx + Supervisor + dependencias para extensiones
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl git unzip supervisor nginx \
+    libicu-dev libzip-dev libonig-dev libxml2-dev \
+    libpng-dev libjpeg-dev libfreetype6-dev \
+    gnupg2 apt-transport-https \
+    unixodbc-dev \
+ && rm -rf /var/lib/apt/lists/*
 
-# Drivers SQL Server (msodbcsql18 + herramientas + toolchain para PECL)
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
- && curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list > /etc/apt/sources.list.d/mssql-release.list \
- && apt-get update \
- && ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 \
- && apt-get install -y unixodbc-dev gcc g++ make autoconf pkg-config php-pear php8.3-dev \
- && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Extensiones PHP comunes (compiladas rápidamente)
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+ && docker-php-ext-install -j1 gd intl zip bcmath opcache
 
-# Instalar extensiones PECL separadas (evita OOM)
-RUN pecl install -f sqlsrv \
- && echo "extension=sqlsrv.so" > /etc/php/8.3/fpm/conf.d/20-sqlsrv.ini \
- && rm -rf /tmp/pear && apt-get clean && rm -rf /var/lib/apt/lists/*
-RUN pecl install -f pdo_sqlsrv \
- && echo "extension=pdo_sqlsrv.so" > /etc/php/8.3/fpm/conf.d/30-pdo_sqlsrv.ini \
- && rm -rf /tmp/pear && apt-get clean && rm -rf /var/lib/apt/lists/*
+# ODBC 18 (Microsoft) para Debian 12 (bookworm) + herramientas
+# Guía MS ODBC Linux: https://learn.microsoft.com/sql/connect/odbc/linux-mac/
+RUN set -eux; \
+    curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/ms.gpg; \
+    echo "deb [signed-by=/usr/share/keyrings/ms.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list; \
+    apt-get update && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 mssql-tools18 \
+    && rm -rf /var/lib/apt/lists/*
 
-# PHP-FPM escuchando por TCP (no socket)
-RUN sed -ri 's|^;?listen\s*=.*$|listen = 127.0.0.1:9000|' /etc/php/8.3/fpm/pool.d/www.conf \
- && sed -ri 's|^;?pm.max_children\s*=.*$|pm.max_children = 10|' /etc/php/8.3/fpm/pool.d/www.conf \
- && sed -ri 's|^;?clear_env\s*=.*$|clear_env = no|' /etc/php/8.3/fpm/pool.d/www.conf
+# PECL sqlsrv / pdo_sqlsrv (uno por paso para bajar memoria)
+RUN pecl channel-update pecl.php.net \
+ && printf "\n" | pecl install -f sqlsrv-5.12.0 \
+ && echo "extension=sqlsrv.so" > /usr/local/etc/php/conf.d/20-sqlsrv.ini \
+ && rm -rf /tmp/pear
+RUN printf "\n" | pecl install -f pdo_sqlsrv-5.12.0 \
+ && echo "extension=pdo_sqlsrv.so" > /usr/local/etc/php/conf.d/30-pdo_sqlsrv.ini \
+ && rm -rf /tmp/pear
 
-# Copiar app compilada
+# Copiar app
 WORKDIR /var/www/html
-COPY --from=builder /app /var/www/html
+COPY . .
+# Vendor y assets construidos
+COPY --from=vendor /app/vendor ./vendor
+COPY --from=frontend /app/public ./public
 
 # Permisos Laravel
 RUN chown -R www-data:www-data storage bootstrap/cache \
  && chmod -R 775 storage bootstrap/cache
 
-# ---------- Nginx conf (plantilla con ${PORT}) ----------
+# ---------- Nginx (plantilla usando ${PORT}) ----------
 RUN mkdir -p /etc/nginx/conf.d
 RUN bash -lc 'cat > /etc/nginx/conf.d/default.conf.template << "EOF"\n\
 server {\n\
@@ -114,7 +101,8 @@ server {\n\
     }\n\
 \n\
     location ~ \\.php$ {\n\
-        include snippets/fastcgi-php.conf;\n\
+        include fastcgi_params;\n\
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;\n\
         fastcgi_pass 127.0.0.1:9000;\n\
         fastcgi_read_timeout 300;\n\
     }\n\
@@ -133,7 +121,7 @@ user=root\n\
 logfile=/var/log/supervisor/supervisord.log\n\
 \n\
 [program:php-fpm]\n\
-command=/usr/sbin/php-fpm8.3 -F\n\
+command=docker-php-entrypoint php-fpm\n\
 priority=10\n\
 autostart=true\n\
 autorestart=true\n\
@@ -149,12 +137,11 @@ stdout_logfile=/dev/stdout\n\
 stderr_logfile=/dev/stderr\n\
 EOF'
 
-# ---------- start.sh (entrypoint sin migraciones) ----------
+# ---------- start.sh ----------
 RUN bash -lc 'cat > /start.sh << "EOF"\n\
 #!/usr/bin/env bash\n\
 set -e\n\
 export PORT=${PORT:-8080}\n\
-# Renderizar nginx con PORT\n\
 envsubst \"\\${PORT}\" < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf\n\
 cd /var/www/html\n\
 php artisan storage:link || true\n\
