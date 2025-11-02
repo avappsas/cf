@@ -20,6 +20,7 @@ RUN composer install \
 # =======================
 FROM node:18-bullseye-slim AS frontend
 WORKDIR /app
+ENV NODE_OPTIONS=--openssl-legacy-provider
 COPY package.json package-lock.json* ./
 RUN [ -f package-lock.json ] && npm ci || npm i
 COPY . .
