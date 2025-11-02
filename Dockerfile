@@ -20,6 +20,7 @@ RUN composer install \
 # =======================
 FROM node:18-bullseye-slim AS frontend
 WORKDIR /app
+ENV NODE_OPTIONS=--openssl-legacy-provider
 COPY package.json package-lock.json* ./
 RUN [ -f package-lock.json ] && npm ci || npm i
 COPY . .
@@ -75,82 +76,82 @@ RUN chown -R www-data:www-data storage bootstrap/cache \
  && chmod -R 775 storage bootstrap/cache
 
 # ---------- Nginx (plantilla usando ${PORT}) ----------
-RUN mkdir -p /etc/nginx/conf.d
-RUN bash -lc 'cat > /etc/nginx/conf.d/default.conf.template << "EOF"\n\
-server {\n\
-    listen ${PORT};\n\
-    server_name _;\n\
-    root /var/www/html/public;\n\
-    index index.php index.html;\n\
-\n\
-    add_header X-Frame-Options \"SAMEORIGIN\" always;\n\
-    add_header X-Content-Type-Options \"nosniff\" always;\n\
-\n\
-    location / {\n\
-        try_files $uri $uri/ /index.php?$query_string;\n\
-    }\n\
-\n\
-    location ~* \\.(?:css|js|jpg|jpeg|png|gif|ico|svg|woff2?)$ {\n\
-        expires 7d;\n\
-        access_log off;\n\
-        try_files $uri $uri/ @laravel;\n\
-    }\n\
-\n\
-    location @laravel {\n\
-        rewrite ^(.+)$ /index.php last;\n\
-    }\n\
-\n\
-    location ~ \\.php$ {\n\
-        include fastcgi_params;\n\
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;\n\
-        fastcgi_pass 127.0.0.1:9000;\n\
-        fastcgi_read_timeout 300;\n\
-    }\n\
-\n\
-    client_max_body_size 50M;\n\
-    access_log /var/log/nginx/access.log;\n\
-    error_log  /var/log/nginx/error.log;\n\
-}\n\
-EOF'
+RUN mkdir -p /etc/nginx/conf.d \
+ && cat <<'EOF' > /etc/nginx/conf.d/default.conf.template
+server {
+    listen ${PORT};
+    server_name _;
+    root /var/www/html/public;
+    index index.php index.html;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~* \.(?:css|js|jpg|jpeg|png|gif|ico|svg|woff2?)$ {
+        expires 7d;
+        access_log off;
+        try_files $uri $uri/ @laravel;
+    }
+
+    location @laravel {
+        rewrite ^(.+)$ /index.php last;
+    }
+
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_read_timeout 300;
+    }
+
+    client_max_body_size 50M;
+    access_log /var/log/nginx/access.log;
+    error_log  /var/log/nginx/error.log;
+}
+EOF
 
 # ---------- Supervisor (php-fpm + nginx) ----------
-RUN bash -lc 'cat > /etc/supervisor/conf.d/supervisord.conf << "EOF"\n\
-[supervisord]\n\
-nodaemon=true\n\
-user=root\n\
-logfile=/var/log/supervisor/supervisord.log\n\
-\n\
-[program:php-fpm]\n\
-command=docker-php-entrypoint php-fpm\n\
-priority=10\n\
-autostart=true\n\
-autorestart=true\n\
-stdout_logfile=/dev/stdout\n\
-stderr_logfile=/dev/stderr\n\
-\n\
-[program:nginx]\n\
-command=/usr/sbin/nginx -g \"daemon off;\"\n\
-priority=20\n\
-autostart=true\n\
-autorestart=true\n\
-stdout_logfile=/dev/stdout\n\
-stderr_logfile=/dev/stderr\n\
-EOF'
+RUN cat <<'EOF' > /etc/supervisor/conf.d/supervisord.conf
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisor/supervisord.log
+
+[program:php-fpm]
+command=docker-php-entrypoint php-fpm
+priority=10
+autostart=true
+autorestart=true
+stdout_logfile=/dev/stdout
+stderr_logfile=/dev/stderr
+
+[program:nginx]
+command=/usr/sbin/nginx -g "daemon off;"
+priority=20
+autostart=true
+autorestart=true
+stdout_logfile=/dev/stdout
+stderr_logfile=/dev/stderr
+EOF
 
 # ---------- start.sh ----------
-RUN bash -lc 'cat > /start.sh << "EOF"\n\
-#!/usr/bin/env bash\n\
-set -e\n\
-export PORT=${PORT:-8080}\n\
-envsubst \"\\${PORT}\" < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf\n\
-cd /var/www/html\n\
-php artisan storage:link || true\n\
-php artisan config:cache || true\n\
-php artisan route:cache || true\n\
-php artisan view:cache || true\n\
-exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf\n\
-EOF\n\
-&& chmod +x /start.sh'
+RUN cat <<'EOF' > /start.sh
+#!/usr/bin/env bash
+set -e
+export PORT=${PORT:-8080}
+envsubst '${PORT}' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf
+cd /var/www/html
+php artisan storage:link || true
+php artisan config:cache || true
+php artisan route:cache || true
+php artisan view:cache || true
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+EOF
+RUN chmod +x /start.sh
 
 ENV PORT=8080
 EXPOSE 8080
